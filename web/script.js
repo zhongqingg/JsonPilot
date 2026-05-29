@@ -21,8 +21,19 @@ function applyDiffMarkers() {
         el.classList.remove('line-modified', 'line-added', 'value-modified', 'key-modified');
     });
 
+    function findLineByPath(pathStr) {
+        const lines = document.querySelectorAll('.json-line');
+        for (const l of lines) { if (l.dataset.path === pathStr) return l; }
+        return null;
+    }
+    function findNodeByPath(pathStr) {
+        const nodes = document.querySelectorAll('.json-node');
+        for (const n of nodes) { if (n.dataset.path === pathStr) return n; }
+        return null;
+    }
+
     for (const pathStr of Object.keys(diffData.modified)) {
-        const line = document.querySelector(`.json-line[data-path='${CSS.escape(pathStr)}']`);
+        const line = findLineByPath(pathStr);
         if (!line) continue;
         line.classList.add('line-modified');
         line.querySelectorAll('.json-value').forEach(v => v.classList.add('value-modified'));
@@ -30,7 +41,7 @@ function applyDiffMarkers() {
     }
 
     for (const pathStr of Object.keys(diffData.added)) {
-        const line = document.querySelector(`.json-line[data-path='${CSS.escape(pathStr)}']`);
+        const line = findLineByPath(pathStr);
         if (!line) continue;
         line.classList.add('line-added');
         line.querySelectorAll('.json-value').forEach(v => v.classList.add('value-modified'));
@@ -38,7 +49,9 @@ function applyDiffMarkers() {
 
     for (const [pathStr, info] of Object.entries(diffData.deleted)) {
         const parentPathStr = JSON.stringify(info.parentPath);
-        const children = document.querySelector(`.json-node[data-path='${CSS.escape(parentPathStr)}'] > .json-children`);
+        const parentNode = findNodeByPath(parentPathStr);
+        if (!parentNode) continue;
+        const children = parentNode.querySelector(':scope > .json-children');
         if (!children) continue;
         const index = info.position;
         const marker = document.createElement('div');
