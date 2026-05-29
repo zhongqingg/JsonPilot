@@ -60,8 +60,15 @@ function applyDiffMarkers() {
         const xBtn = document.createElement('span');
         xBtn.className = 'deleted-x';
         xBtn.textContent = '✕';
-        const valStr = typeof info.value === 'object' ? JSON.stringify(info.value, null, 2) : JSON.stringify(info.value);
-        xBtn.addEventListener('mouseenter', (e) => showDeletedTooltip(e, valStr));
+        let delLabel;
+        if (info.isArrayElement) {
+            delLabel = '[' + info.key + '] ' + JSON.stringify(info.value, null, 2);
+        } else if (info.key !== undefined && info.key !== null) {
+            delLabel = '"' + info.key + '": ' + JSON.stringify(info.value, null, 2);
+        } else {
+            delLabel = JSON.stringify(info.value, null, 2);
+        }
+        xBtn.addEventListener('mouseenter', (e) => showDeletedTooltip(e, delLabel));
         xBtn.addEventListener('mouseleave', hideDeletedTooltip);
         marker.appendChild(xBtn);
         const childNodes = [...children.children];
@@ -888,7 +895,9 @@ function handleContextMenu(action, state) {
                         recordChange('deleted', state.path, {
                             value: state.val,
                             parentPath,
-                            position
+                            position,
+                            key: state.key,
+                            isArrayElement: state.isArrayElement
                         });
                         removeValueByPath(jsonData, state.path);
                         markModified();
