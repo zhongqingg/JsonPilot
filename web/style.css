@@ -722,20 +722,16 @@ body {
 }
 
 .deleted-line {
-    display: flex;
-    align-items: center;
-    padding: 0 8px;
-    height: 20px;
-    position: relative;
-    cursor: default;
-}
-.deleted-line::before {
-    content: '';
-    flex: 1;
     height: 1px;
     background: var(--deleted-line-color, #ffaaaa);
+    position: relative;
+    margin: 0 8px;
+    cursor: default;
 }
-.deleted-x {
+.deleted-line .deleted-x {
+    position: absolute;
+    right: 0;
+    top: -9px;
     width: 18px;
     height: 18px;
     display: flex;
@@ -747,12 +743,11 @@ body {
     color: var(--deleted-x-color, #cc0000);
     font-size: 11px;
     cursor: help;
-    margin-left: 6px;
-    flex-shrink: 0;
     font-family: sans-serif;
     font-weight: bold;
+    z-index: 1;
 }
-.deleted-x:hover {
+.deleted-line .deleted-x:hover {
     background: var(--deleted-x-hover, #ffcccc);
 }
 .deleted-tooltip {
