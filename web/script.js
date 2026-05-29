@@ -56,7 +56,6 @@ async function loadFileTree() {
 function renderFileTree(node, container, basePath, parentItem) {
     container.innerHTML = "";
     if (typeof node !== "object" || node === null) return;
-
     const keys = Object.keys(node).sort();
     for (const key of keys) {
         const val = node[key];
@@ -101,9 +100,7 @@ function renderFileTree(node, container, basePath, parentItem) {
                 childContainer.className = "file-tree-children hidden";
                 const newBase = basePath ? basePath + "/" + key : key;
                 const subNode = {};
-                for (const sk of subKeys) {
-                    subNode[sk] = val[sk];
-                }
+                for (const sk of subKeys) subNode[sk] = val[sk];
                 renderFileTree(subNode, childContainer, newBase, item);
                 container.appendChild(childContainer);
                 item.dataset.folder = "true";
@@ -139,19 +136,16 @@ function updateUI() {
     document.getElementById("file-path-display").textContent = currentFilePath || "No file selected";
     document.getElementById("btnSave").disabled = !modified || !currentFilePath;
     document.getElementById("btnSaveAs").disabled = !jsonData;
-
     const treeContainer = document.getElementById("json-tree");
     const emptyState = document.getElementById("empty-state");
-
     if (!jsonData) {
         treeContainer.innerHTML = "";
         emptyState.classList.remove("hidden");
         return;
     }
-
     emptyState.classList.add("hidden");
     treeContainer.innerHTML = "";
-    treeContainer.appendChild(renderValue(jsonData, [], "", false, -1));
+    treeContainer.appendChild(renderValue(jsonData, [], undefined, false, -1));
     expandAll();
 }
 
@@ -165,51 +159,97 @@ function getValueByPath(data, path) {
 }
 
 function setValueByPath(data, path, value) {
-    if (path.length === 0) {
-        jsonData = value;
-        return;
-    }
+    if (path.length === 0) { jsonData = value; return; }
     let current = data;
-    for (let i = 0; i < path.length - 1; i++) {
-        current = current[path[i]];
-    }
+    for (let i = 0; i < path.length - 1; i++) current = current[path[i]];
     current[path[path.length - 1]] = value;
 }
 
 function removeValueByPath(data, path) {
     if (path.length === 0) return;
     let current = data;
-    for (let i = 0; i < path.length - 1; i++) {
-        current = current[path[i]];
-    }
+    for (let i = 0; i < path.length - 1; i++) current = current[path[i]];
     const lastKey = path[path.length - 1];
-    if (Array.isArray(current)) {
-        current.splice(lastKey, 1);
-    } else {
-        delete current[lastKey];
-    }
+    if (Array.isArray(current)) current.splice(lastKey, 1);
+    else delete current[lastKey];
 }
 
 function duplicateValueByPath(data, path) {
     if (path.length === 0) return;
     let current = data;
-    for (let i = 0; i < path.length - 1; i++) {
-        current = current[path[i]];
-    }
+    for (let i = 0; i < path.length - 1; i++) current = current[path[i]];
     const lastKey = path[path.length - 1];
     const value = current[lastKey];
-
     if (Array.isArray(current)) {
         current.push(JSON.parse(JSON.stringify(value)));
     } else {
         let newKey = String(lastKey) + "_copy";
         let counter = 1;
-        while (newKey in current) {
-            counter++;
-            newKey = String(lastKey) + "_copy" + counter;
-        }
+        while (newKey in current) { counter++; newKey = String(lastKey) + "_copy" + counter; }
         current[newKey] = JSON.parse(JSON.stringify(value));
     }
+}
+
+function getExpandedState() {
+    const expanded = new Set();
+    document.querySelectorAll("#json-tree .json-node").forEach(node => {
+        const pathStr = node.dataset.path;
+        if (!pathStr) return;
+        const children = node.querySelector(":scope > .json-children");
+        if (children && !children.classList.contains("collapsed")) {
+            expanded.add(pathStr);
+        }
+    });
+    return expanded;
+}
+
+function restoreExpandedState(state) {
+    document.querySelectorAll("#json-tree .json-node").forEach(node => {
+        const pathStr = node.dataset.path;
+        if (!pathStr) return;
+        const children = node.querySelector(":scope > .json-children");
+        if (!children) return;
+        if (state.has(pathStr)) {
+            children.classList.remove("collapsed");
+            const toggle = node.querySelector(":scope > .json-line .json-toggle");
+            const lines = node.querySelectorAll(":scope > .json-line");
+            const bracketOpenLine = findBracketOpenLine(lines);
+            const bracketCloseLine = lines[lines.length - 1];
+            if (toggle) toggle.className = "json-toggle expanded";
+            if (bracketOpenLine) {
+                const bc = bracketOpenLine.querySelector(".json-bracket");
+                if (bc) {
+                    const val = getValueByPath(jsonData, JSON.parse(pathStr));
+                    bc.textContent = Array.isArray(val) ? "[" : "{";
+                }
+            }
+            if (bracketCloseLine) bracketCloseLine.style.display = "";
+        } else {
+            children.classList.add("collapsed");
+            const toggle = node.querySelector(":scope > .json-line .json-toggle");
+            const lines = node.querySelectorAll(":scope > .json-line");
+            const bracketOpenLine = findBracketOpenLine(lines);
+            const bracketCloseLine = lines[lines.length - 1];
+            if (toggle) toggle.className = "json-toggle collapsed";
+            if (bracketOpenLine) {
+                const bc = bracketOpenLine.querySelector(".json-bracket");
+                if (bc) {
+                    const val = getValueByPath(jsonData, JSON.parse(pathStr));
+                    if (Array.isArray(val)) bc.textContent = "[" + val.length + " items]";
+                    else if (val && typeof val === "object") bc.textContent = "{" + Object.keys(val).length + " keys}";
+                    else bc.textContent = "{...}";
+                }
+            }
+            if (bracketCloseLine) bracketCloseLine.style.display = "none";
+        }
+    });
+}
+
+function findBracketOpenLine(lines) {
+    for (let i = lines.length - 1; i >= 0; i--) {
+        if (lines[i].classList.contains("bracket-open-line")) return lines[i];
+    }
+    return null;
 }
 
 function renderValue(val, path, key, isArrayElement, index) {
@@ -223,55 +263,61 @@ function renderValue(val, path, key, isArrayElement, index) {
         const keys = isArray ? val.map((_, i) => i) : Object.keys(val);
         const len = keys.length;
 
-        const line = document.createElement("div");
-        line.className = "json-line";
-        line.dataset.path = JSON.stringify(path);
+        if (key !== undefined && key !== null) {
+            const keySpan = makeKeySpan(key, isArrayElement, index, path);
+            if (keySpan) {
+                const keyLine = document.createElement("div");
+                keyLine.className = "json-line";
+                keyLine.dataset.path = JSON.stringify(path);
+                const ht = document.createElement("span");
+                ht.className = "json-toggle hidden";
+                ht.style.visibility = "hidden";
+                ht.textContent = " ";
+                keyLine.appendChild(ht);
+                keyLine.appendChild(keySpan);
+                container.appendChild(keyLine);
+            }
+        }
+
+        const bracketLine = document.createElement("div");
+        bracketLine.className = "json-line bracket-open-line";
+        bracketLine.dataset.path = JSON.stringify(path);
 
         const toggle = document.createElement("span");
         toggle.className = "json-toggle expanded";
         if (len === 0) toggle.classList.add("hidden");
         toggle.addEventListener("click", (e) => {
             e.stopPropagation();
-            toggleChildren(container, toggle);
+            toggleNode(container);
         });
 
         const bracketOpen = document.createElement("span");
         bracketOpen.className = "json-bracket";
         bracketOpen.textContent = isArray ? "[" : "{";
 
-        const keySpan = makeKeySpan(key, isArrayElement, index, path);
-        if (keySpan) line.appendChild(keySpan);
+        bracketLine.appendChild(toggle);
+        bracketLine.appendChild(bracketOpen);
 
-        line.appendChild(toggle);
-        line.appendChild(bracketOpen);
+        if (len > 0) {
+            const info = document.createElement("span");
+            info.style.cssText = "color:#888;font-size:12px;margin-left:6px;";
+            info.textContent = "// " + len + (isArray ? " items" : " keys");
+            bracketLine.appendChild(info);
+        }
 
-        const info = document.createElement("span");
-        info.style.color = "#888";
-        info.style.fontSize = "12px";
-        info.style.marginLeft = "4px";
-        info.textContent = len + (isArray ? " items" : " keys");
-        line.appendChild(info);
-
-        container.appendChild(line);
+        container.appendChild(bracketLine);
 
         const children = document.createElement("div");
         children.className = "json-children";
-
         for (let i = 0; i < len; i++) {
             const k = keys[i];
-            const childVal = val[k];
-            const childPath = [...path, k];
-            const childNode = renderValue(
-                childVal, childPath, String(k), isArray, isArray ? k : -1
-            );
+            const childNode = renderValue(val[k], [...path, k], String(k), isArray, isArray ? k : -1);
             children.appendChild(childNode);
         }
-
         container.appendChild(children);
 
         const closeLine = document.createElement("div");
         closeLine.className = "json-line";
-        closeLine.style.borderLeft = "3px solid transparent";
         const closeToggle = document.createElement("span");
         closeToggle.className = "json-toggle hidden";
         closeToggle.style.visibility = "hidden";
@@ -290,25 +336,55 @@ function renderValue(val, path, key, isArrayElement, index) {
         const line = document.createElement("div");
         line.className = "json-line";
         line.dataset.path = JSON.stringify(path);
-
         const toggle = document.createElement("span");
         toggle.className = "json-toggle hidden";
         toggle.style.visibility = "hidden";
         toggle.textContent = " ";
         line.appendChild(toggle);
-
         const keySpan = makeKeySpan(key, isArrayElement, index, path);
         if (keySpan) line.appendChild(keySpan);
-
         const valueSpan = makeValueSpan(val, path);
         line.appendChild(valueSpan);
-
         container.appendChild(line);
         container.dataset.path = JSON.stringify(path);
         setupContextMenu(container, path, key, isArrayElement, val);
     }
 
     return container;
+}
+
+function toggleNode(container) {
+    const children = container.querySelector(":scope > .json-children");
+    if (!children) return;
+    const isCollapsed = children.classList.toggle("collapsed");
+    const lines = container.querySelectorAll(":scope > .json-line");
+    const bracketOpenLine = findBracketOpenLine(lines);
+    const bracketCloseLine = lines[lines.length - 1];
+
+    if (bracketOpenLine) {
+        const toggle = bracketOpenLine.querySelector(".json-toggle");
+        if (toggle) toggle.className = isCollapsed ? "json-toggle collapsed" : "json-toggle expanded";
+        const bc = bracketOpenLine.querySelector(".json-bracket");
+        if (bc) {
+            if (isCollapsed) {
+                const pathStr = container.dataset.path;
+                if (pathStr) {
+                    try {
+                        const val = getValueByPath(jsonData, JSON.parse(pathStr));
+                        if (Array.isArray(val)) bc.textContent = "[" + val.length + " items]";
+                        else if (val && typeof val === "object") bc.textContent = "{" + Object.keys(val).length + " keys}";
+                        else bc.textContent = "{...}";
+                    } catch(e) { bc.textContent = "{...}"; }
+                }
+            } else {
+                const val = getValueByPath(jsonData, JSON.parse(container.dataset.path));
+                bc.textContent = Array.isArray(val) ? "[" : "{";
+            }
+        }
+    }
+    if (bracketCloseLine) {
+        bracketCloseLine.style.display = isCollapsed ? "none" : "";
+    }
 }
 
 function makeKeySpan(key, isArrayElement, index, path) {
@@ -347,19 +423,16 @@ function makeKeySpan(key, isArrayElement, index, path) {
 function makeValueSpan(val, path) {
     const span = document.createElement("span");
     span.className = "json-value";
-
     if (val === null) {
         span.textContent = "null";
         span.classList.add("type-null");
     } else if (typeof val === "string") {
         const q1 = document.createElement("span");
-        q1.style.color = "#888";
-        q1.textContent = '"';
+        q1.style.color = "#888"; q1.textContent = '"';
         span.appendChild(q1);
         span.appendChild(document.createTextNode(val));
         const q2 = document.createElement("span");
-        q2.style.color = "#888";
-        q2.textContent = '"';
+        q2.style.color = "#888"; q2.textContent = '"';
         span.appendChild(q2);
         span.classList.add("type-string");
     } else if (typeof val === "number") {
@@ -372,7 +445,6 @@ function makeValueSpan(val, path) {
         span.textContent = String(val);
         span.classList.add("type-undefined");
     }
-
     span.addEventListener("dblclick", (e) => {
         e.stopPropagation();
         startEditValue(span, val, path);
@@ -392,7 +464,6 @@ function startEditKey(span, oldKey, path) {
     span.appendChild(input);
     input.focus();
     input.select();
-
     const finish = () => {
         const newKey = input.value.trim();
         span.classList.remove("editing");
@@ -402,23 +473,18 @@ function startEditKey(span, oldKey, path) {
                 parent[newKey] = parent[oldKey];
                 delete parent[oldKey];
                 markModified();
+                const state = getExpandedState();
                 rerenderJson();
+                restoreExpandedState(state);
                 return;
             }
         }
         rerenderJson();
     };
-
     input.addEventListener("blur", finish);
     input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            input.blur();
-        } else if (e.key === "Escape") {
-            e.preventDefault();
-            span.classList.remove("editing");
-            rerenderJson();
-        }
+        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+        else if (e.key === "Escape") { e.preventDefault(); span.classList.remove("editing"); rerenderJson(); }
         e.stopPropagation();
     });
 }
@@ -429,144 +495,83 @@ function startEditValue(span, oldVal, path) {
     const input = document.createElement("input");
     input.className = "json-edit-input";
     input.type = "text";
-
     let strVal;
     if (oldVal === null) strVal = "null";
     else if (typeof oldVal === "boolean") strVal = String(oldVal);
     else if (typeof oldVal === "string") strVal = oldVal;
     else if (typeof oldVal === "number") strVal = String(oldVal);
     else strVal = String(oldVal);
-
     input.value = strVal;
     input.style.width = Math.max(60, strVal.length * 8 + 24) + "px";
     span.innerHTML = "";
     span.appendChild(input);
     input.focus();
     input.select();
-
     const finish = () => {
         const raw = input.value;
         span.classList.remove("editing");
         let newVal;
-        if (raw === "null") {
-            newVal = null;
-        } else if (raw === "true") {
-            newVal = true;
-        } else if (raw === "false") {
-            newVal = false;
-        } else if (!isNaN(raw) && raw.trim() !== "" && raw.trim() !== "") {
-            newVal = Number(raw);
-        } else {
-            newVal = raw;
-        }
+        if (raw === "null") newVal = null;
+        else if (raw === "true") newVal = true;
+        else if (raw === "false") newVal = false;
+        else if (!isNaN(raw) && raw.trim() !== "") newVal = Number(raw);
+        else newVal = raw;
         setValueByPath(jsonData, path, newVal);
         markModified();
+        const state = getExpandedState();
         rerenderJson();
+        restoreExpandedState(state);
     };
-
     input.addEventListener("blur", finish);
     input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            input.blur();
-        } else if (e.key === "Escape") {
-            e.preventDefault();
-            span.classList.remove("editing");
-            rerenderJson();
-        }
+        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+        else if (e.key === "Escape") { e.preventDefault(); span.classList.remove("editing"); rerenderJson(); }
         e.stopPropagation();
     });
 }
 
-function toggleChildren(container, toggleBtn) {
-    const children = container.querySelector(":scope > .json-children");
-    if (!children) return;
-    const isCollapsed = children.classList.toggle("collapsed");
-    toggleBtn.className = isCollapsed ? "json-toggle collapsed" : "json-toggle expanded";
-
-    const firstLine = container.querySelector(":scope > .json-line");
-    const closeLine = container.querySelector(":scope > .json-line + .json-children + .json-line");
-    if (!firstLine) return;
-
-    const bracketInFirst = firstLine.querySelector(".json-bracket:last-of-type");
-    const bracketInClose = closeLine ? closeLine.querySelector(".json-bracket") : null;
-
-    if (isCollapsed) {
-        if (bracketInFirst) {
-            bracketInFirst.style.display = "inline";
-            const pathStr = container.dataset.path;
-            if (pathStr) {
+function expandAll() {
+    document.querySelectorAll("#json-tree .json-children.collapsed").forEach(el => el.classList.remove("collapsed"));
+    document.querySelectorAll("#json-tree .json-toggle.collapsed").forEach(el => el.className = "json-toggle expanded");
+    document.querySelectorAll("#json-tree .json-node").forEach(node => {
+        const lines = node.querySelectorAll(":scope > .json-line");
+        const bol = findBracketOpenLine(lines);
+        const bcl = lines[lines.length - 1];
+        if (bol) {
+            const bc = bol.querySelector(".json-bracket");
+            if (bc) {
                 try {
-                    const path = JSON.parse(pathStr);
-                    const val = getValueByPath(jsonData, path);
-                    if (Array.isArray(val)) {
-                        bracketInFirst.textContent = "[" + val.length + " items]";
-                    } else if (val && typeof val === "object") {
-                        const klen = Object.keys(val).length;
-                        bracketInFirst.textContent = "{" + klen + " keys}";
-                    }
-                } catch(e) {
-                    bracketInFirst.textContent = "{...}";
-                }
+                    const val = getValueByPath(jsonData, JSON.parse(node.dataset.path));
+                    bc.textContent = Array.isArray(val) ? "[" : "{";
+                } catch(e) { bc.textContent = "{"; }
             }
         }
-        if (bracketInClose) bracketInClose.style.display = "none";
-    } else {
-        if (bracketInFirst) bracketInFirst.style.display = "none";
-        if (bracketInClose) bracketInClose.style.display = "inline";
-    }
-}
-
-function expandAll() {
-    document.querySelectorAll(".json-children.collapsed").forEach(el => el.classList.remove("collapsed"));
-    document.querySelectorAll(".json-toggle.collapsed").forEach(el => {
-        el.className = "json-toggle expanded";
-    });
-    document.querySelectorAll(".json-children").forEach(children => {
-        const container = children.parentElement;
-        if (!container) return;
-        const line = container.querySelector(":scope > .json-line");
-        if (!line) return;
-        const bc = line.querySelector(".json-bracket:last-of-type");
-        if (bc) bc.style.display = "none";
-        const closeLine = container.querySelector(":scope > .json-line + .json-children + .json-line");
-        if (closeLine) {
-            const cb = closeLine.querySelector(".json-bracket");
-            if (cb) cb.style.display = "inline";
-        }
+        if (bcl) bcl.style.display = "";
     });
 }
 
 function collapseAll() {
-    document.querySelectorAll(".json-children").forEach(el => el.classList.add("collapsed"));
-    document.querySelectorAll(".json-toggle.expanded").forEach(el => {
-        el.className = "json-toggle collapsed";
-    });
-    document.querySelectorAll(".json-node").forEach(container => {
-        const firstLine = container.querySelector(":scope > .json-line");
-        if (!firstLine) return;
-        const bc = firstLine.querySelector(".json-bracket:last-of-type");
-        if (!bc) return;
-        bc.style.display = "inline";
-        const pathStr = container.dataset.path;
-        if (pathStr) {
-            try {
-                const path = JSON.parse(pathStr);
-                const val = getValueByPath(jsonData, path);
-                if (Array.isArray(val)) {
-                    bc.textContent = "[" + val.length + " items]";
-                } else if (val && typeof val === "object") {
-                    bc.textContent = "{" + Object.keys(val).length + " keys}";
+    document.querySelectorAll("#json-tree .json-children").forEach(el => el.classList.add("collapsed"));
+    document.querySelectorAll("#json-tree .json-toggle.expanded").forEach(el => el.className = "json-toggle collapsed");
+    document.querySelectorAll("#json-tree .json-node").forEach(node => {
+        const lines = node.querySelectorAll(":scope > .json-line");
+        const bol = findBracketOpenLine(lines);
+        const bcl = lines[lines.length - 1];
+        if (bol) {
+            const bc = bol.querySelector(".json-bracket");
+            if (bc) {
+                const pathStr = node.dataset.path;
+                if (pathStr) {
+                    try {
+                        const val = getValueByPath(jsonData, JSON.parse(pathStr));
+                        if (Array.isArray(val)) bc.textContent = "[" + val.length + " items]";
+                        else if (val && typeof val === "object") bc.textContent = "{" + Object.keys(val).length + " keys}";
+                        else bc.textContent = "{...}";
+                    } catch(e) { bc.textContent = "{...}"; }
                 }
-            } catch(e) {
-                bc.textContent = "{...}";
             }
         }
-        const closeLine = container.querySelector(":scope > .json-line + .json-children + .json-line");
-        if (closeLine) {
-            const cb = closeLine.querySelector(".json-bracket");
-            if (cb) cb.style.display = "none";
-        }
+        if (bcl) bcl.style.display = "none";
     });
 }
 
@@ -574,7 +579,7 @@ function rerenderJson() {
     if (!jsonData) return;
     const treeContainer = document.getElementById("json-tree");
     treeContainer.innerHTML = "";
-    treeContainer.appendChild(renderValue(jsonData, [], "", false, -1));
+    treeContainer.appendChild(renderValue(jsonData, [], undefined, false, -1));
 }
 
 function markModified() {
@@ -589,7 +594,6 @@ function setupContextMenu(container, path, key, isArrayElement, val) {
     container.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        const rect = container.getBoundingClientRect();
         const isObj = val !== null && typeof val === "object";
         showContextMenu(e.clientX, e.clientY, path, key, isArrayElement, val, isObj);
     });
@@ -601,7 +605,6 @@ function showContextMenu(x, y, path, key, isArrayElement, val, isObject) {
     menu.style.top = Math.min(y, window.innerHeight - 150) + "px";
     menu.classList.remove("hidden");
     menu._state = { path, key, isArrayElement, val, isObject };
-
     document.querySelectorAll("#context-menu .menu-item").forEach(item => {
         const action = item.dataset.action;
         item.onclick = () => handleContextMenu(action, menu._state);
@@ -620,26 +623,31 @@ function handleContextMenu(action, state) {
                 navigator.clipboard.writeText(state.key).catch(() => {});
             }
             break;
-        case "copy-value":
+        case "copy-value": {
             let valStr;
             if (state.val === null) valStr = "null";
             else if (typeof state.val === "object") valStr = JSON.stringify(state.val, null, 2);
             else valStr = String(state.val);
             navigator.clipboard.writeText(valStr).catch(() => {});
             break;
+        }
         case "duplicate":
             if (state.path.length > 0) {
+                const expandedState = getExpandedState();
                 duplicateValueByPath(jsonData, state.path);
                 markModified();
                 rerenderJson();
+                restoreExpandedState(expandedState);
             }
             break;
         case "delete":
             if (state.path.length > 0) {
                 showConfirm("Delete this node?", () => {
+                    const expandedState = getExpandedState();
                     removeValueByPath(jsonData, state.path);
                     markModified();
                     rerenderJson();
+                    restoreExpandedState(expandedState);
                 });
             }
             break;

@@ -236,6 +236,10 @@ body {
     white-space: nowrap;
 }
 
+.bracket-open-line {
+    border-left: 3px solid transparent;
+}
+
 .json-line:hover {
     background: #2a2d2e;
 }
