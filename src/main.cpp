@@ -25,6 +25,7 @@ public:
         win.bind("save_file_as", this, &JsonEditorApp::bindSaveFileAs);
         win.bind("get_config", this, &JsonEditorApp::bindGetConfig);
         win.bind("show_save_dialog", this, &JsonEditorApp::bindShowSaveDialog);
+        win.set_close_handler_wv(closeHandler);
     }
 
     void run() {
@@ -35,20 +36,21 @@ public:
         win.set_root_folder(webPath);
         win.show("");
 
-        // Subclass the window to intercept WM_CLOSE reliably
-        HWND hwnd = (HWND)win.win32_get_hwnd();
-        if (hwnd) {
-            originalWndProc = (WNDPROC)GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
-            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)customWndProc);
-        }
-
         while (true) {
             if (closeRequested && !forceClosing) {
                 closeRequested = false;
-                int ret = MessageBoxA(NULL,
-                    "You have unsaved changes.\nLeave without saving?",
-                    "Unsaved Changes", MB_YESNO | MB_ICONWARNING | MB_SYSTEMMODAL);
-                if (ret == IDYES) {
+                char result[8] = {0};
+                bool ok = win.script("modified ? 1 : 0", 3000, result, sizeof(result));
+                bool hasChanges = ok && strcmp(result, "1") == 0;
+                if (!ok || hasChanges) {
+                    int ret = MessageBoxA(NULL,
+                        "You have unsaved changes.\nLeave without saving?",
+                        "Unsaved Changes", MB_YESNO | MB_ICONWARNING | MB_SYSTEMMODAL);
+                    if (ret == IDYES) {
+                        forceClosing = true;
+                        webui_exit();
+                    }
+                } else {
                     forceClosing = true;
                     webui_exit();
                 }
@@ -56,25 +58,16 @@ public:
             if (!webui_wait_async()) break;
             Sleep(50);
         }
-
-        // Restore original window proc
-        if (hwnd && originalWndProc)
-            SetWindowLongPtrW(hwnd, GWLP_WNDPROC, (LONG_PTR)originalWndProc);
     }
 
 private:
     static bool forceClosing;
     static bool closeRequested;
-    static WNDPROC originalWndProc;
 
-    static LRESULT CALLBACK customWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-        if (msg == WM_CLOSE) {
-            if (forceClosing)
-                return CallWindowProcW(originalWndProc, hwnd, msg, wParam, lParam);
-            closeRequested = true;
-            return 0;
-        }
-        return CallWindowProcW(originalWndProc, hwnd, msg, wParam, lParam);
+    static bool closeHandler(size_t window) {
+        if (forceClosing) return true;
+        closeRequested = true;
+        return false;
     }
 
     webui::window win;
@@ -400,7 +393,6 @@ private:
 
 bool JsonEditorApp::forceClosing = false;
 bool JsonEditorApp::closeRequested = false;
-WNDPROC JsonEditorApp::originalWndProc = nullptr;
 
 int main() {
     JsonEditorApp app;
