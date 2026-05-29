@@ -54,6 +54,13 @@
     --btn-ok-bg: #0e639c;
     --btn-ok-hover: #1177bb;
     --editor-padding: 8px 0;
+    --line-modified-bg: #553d42;
+    --value-modified-color: #f09090;
+    --deleted-line-color: #884444;
+    --deleted-x-bg: #553333;
+    --deleted-x-border: #884444;
+    --deleted-x-color: #ff6666;
+    --deleted-x-hover: #664444;
 }
 
 [data-theme="light"] {
@@ -112,6 +119,13 @@
     --btn-ok-bg: #0078d4;
     --btn-ok-hover: #106ebe;
     --editor-padding: 8px 0;
+    --line-modified-bg: #ffe4e9;
+    --value-modified-color: #d6336c;
+    --deleted-line-color: #ffaaaa;
+    --deleted-x-bg: #ffe0e0;
+    --deleted-x-border: #ff8888;
+    --deleted-x-color: #cc0000;
+    --deleted-x-hover: #ffcccc;
 }
 
 * {
@@ -690,6 +704,73 @@ body {
 
 .dialog-error.hidden {
     display: none;
+}
+
+.line-modified {
+    background: var(--line-modified-bg, #ffe4e9) !important;
+}
+.line-added {
+    background: var(--line-modified-bg, #ffe4e9) !important;
+}
+.value-modified {
+    font-weight: bold;
+    color: var(--value-modified-color, #d6336c);
+}
+.key-modified {
+    font-weight: bold;
+    color: var(--value-modified-color, #d6336c);
+}
+
+.deleted-line {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    height: 20px;
+    position: relative;
+    cursor: default;
+}
+.deleted-line::before {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--deleted-line-color, #ffaaaa);
+}
+.deleted-x {
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--deleted-x-bg, #ffe0e0);
+    border: 1px solid var(--deleted-x-border, #ff8888);
+    border-radius: 50%;
+    color: var(--deleted-x-color, #cc0000);
+    font-size: 11px;
+    cursor: help;
+    margin-left: 6px;
+    flex-shrink: 0;
+    font-family: sans-serif;
+    font-weight: bold;
+}
+.deleted-x:hover {
+    background: var(--deleted-x-hover, #ffcccc);
+}
+.deleted-tooltip {
+    position: fixed;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 8px 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    z-index: 3000;
+    font-size: 12px;
+    max-width: 450px;
+    max-height: 250px;
+    overflow: auto;
+    white-space: pre-wrap;
+    font-family: 'Consolas', 'Courier New', monospace;
+    color: #333;
+    pointer-events: none;
 }
 
 .modified-indicator {

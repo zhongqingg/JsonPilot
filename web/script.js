@@ -2,6 +2,82 @@ let jsonData = null;
 let currentFilePath = "";
 let modified = false;
 let confirmCallback = null;
+let diffData = { modified: {}, added: {}, deleted: {} };
+
+function recordChange(type, path, details) {
+    const key = JSON.stringify(path);
+    if (type === 'modified') diffData.modified[key] = details;
+    else if (type === 'added') diffData.added[key] = details;
+    else if (type === 'deleted') diffData.deleted[key] = details;
+}
+
+function clearDiff() {
+    diffData = { modified: {}, added: {}, deleted: {} };
+}
+
+function applyDiffMarkers() {
+    document.querySelectorAll('.deleted-line, .deleted-tooltip').forEach(el => el.remove());
+    document.querySelectorAll('.line-modified, .line-added, .value-modified, .key-modified').forEach(el => {
+        el.classList.remove('line-modified', 'line-added', 'value-modified', 'key-modified');
+    });
+
+    for (const pathStr of Object.keys(diffData.modified)) {
+        const line = document.querySelector(`.json-line[data-path='${CSS.escape(pathStr)}']`);
+        if (!line) continue;
+        line.classList.add('line-modified');
+        line.querySelectorAll('.json-value').forEach(v => v.classList.add('value-modified'));
+        line.querySelectorAll('.json-key').forEach(k => k.classList.add('key-modified'));
+    }
+
+    for (const pathStr of Object.keys(diffData.added)) {
+        const line = document.querySelector(`.json-line[data-path='${CSS.escape(pathStr)}']`);
+        if (!line) continue;
+        line.classList.add('line-added');
+        line.querySelectorAll('.json-value').forEach(v => v.classList.add('value-modified'));
+    }
+
+    for (const [pathStr, info] of Object.entries(diffData.deleted)) {
+        const parentPathStr = JSON.stringify(info.parentPath);
+        const children = document.querySelector(`.json-node[data-path='${CSS.escape(parentPathStr)}'] > .json-children`);
+        if (!children) continue;
+        const index = info.position;
+        const marker = document.createElement('div');
+        marker.className = 'deleted-line';
+        marker.dataset.path = pathStr;
+        const xBtn = document.createElement('span');
+        xBtn.className = 'deleted-x';
+        xBtn.textContent = '✕';
+        const valStr = typeof info.value === 'object' ? JSON.stringify(info.value, null, 2) : JSON.stringify(info.value);
+        xBtn.addEventListener('mouseenter', (e) => showDeletedTooltip(e, valStr));
+        xBtn.addEventListener('mouseleave', hideDeletedTooltip);
+        marker.appendChild(xBtn);
+        const childNodes = [...children.children];
+        let insertBefore = null;
+        let count = 0;
+        for (const child of childNodes) {
+            if (child.classList.contains('deleted-line')) continue;
+            if (count === index) { insertBefore = child; break; }
+            count++;
+        }
+        if (insertBefore) children.insertBefore(marker, insertBefore);
+        else children.appendChild(marker);
+    }
+}
+
+function showDeletedTooltip(e, valStr) {
+    const existing = document.querySelector('.deleted-tooltip');
+    if (existing) existing.remove();
+    const tip = document.createElement('div');
+    tip.className = 'deleted-tooltip';
+    tip.textContent = valStr;
+    tip.style.left = Math.min(e.clientX + 10, window.innerWidth - 460) + 'px';
+    tip.style.top = Math.min(e.clientY + 10, window.innerHeight - 260) + 'px';
+    document.body.appendChild(tip);
+}
+
+function hideDeletedTooltip() {
+    document.querySelectorAll('.deleted-tooltip').forEach(el => el.remove());
+}
 
 async function init() {
     await loadFileTree();
@@ -171,6 +247,7 @@ async function openFile(relPath, el) {
         jsonData = result.data;
         currentFilePath = relPath;
         modified = false;
+        clearDiff();
         updateUI();
     } catch (err) {
         showError("Error loading file: " + err.message);
@@ -221,19 +298,24 @@ function removeValueByPath(data, path) {
 }
 
 function duplicateValueByPath(data, path) {
-    if (path.length === 0) return;
+    if (path.length === 0) return null;
     let current = data;
     for (let i = 0; i < path.length - 1; i++) current = current[path[i]];
     const lastKey = path[path.length - 1];
     const value = current[lastKey];
+    let newPath;
     if (Array.isArray(current)) {
+        const newIdx = current.length;
         current.push(JSON.parse(JSON.stringify(value)));
+        newPath = [...path.slice(0, -1), newIdx];
     } else {
         let newKey = String(lastKey) + "_copy";
         let counter = 1;
         while (newKey in current) { counter++; newKey = String(lastKey) + "_copy" + counter; }
         current[newKey] = JSON.parse(JSON.stringify(value));
+        newPath = [...path.slice(0, -1), newKey];
     }
+    return newPath;
 }
 
 function getExpandedState() {
@@ -478,23 +560,25 @@ function startEditKey(span, oldKey, path) {
     span.appendChild(input);
     input.focus();
     input.select();
-    const finish = () => {
-        const newKey = input.value.trim();
-        span.classList.remove("editing");
-        if (newKey && newKey !== oldKey) {
-            const parent = getValueByPath(jsonData, path.slice(0, -1));
-            if (parent && typeof parent === "object" && !Array.isArray(parent)) {
-                parent[newKey] = parent[oldKey];
-                delete parent[oldKey];
-                markModified();
-                const state = getExpandedState();
-                rerenderJson();
-                restoreExpandedState(state);
-                return;
+        const finish = () => {
+            const newKey = input.value.trim();
+            span.classList.remove("editing");
+            if (newKey && newKey !== oldKey) {
+                const parent = getValueByPath(jsonData, path.slice(0, -1));
+                if (parent && typeof parent === "object" && !Array.isArray(parent)) {
+                    const newPath = [...path.slice(0, -1), newKey];
+                    recordChange('modified', newPath, { oldVal: parent[oldKey], newVal: parent[oldKey], oldKey });
+                    parent[newKey] = parent[oldKey];
+                    delete parent[oldKey];
+                    markModified();
+                    const state = getExpandedState();
+                    rerenderJson();
+                    restoreExpandedState(state);
+                    return;
+                }
             }
-        }
-        rerenderJson();
-    };
+            rerenderJson();
+        };
     input.addEventListener("blur", finish);
     input.addEventListener("keydown", (e) => {
         if (e.key === "Enter") { e.preventDefault(); input.blur(); }
@@ -532,6 +616,7 @@ function startEditValue(span, oldVal, path) {
         else if (raw === "false") newVal = false;
         else if (!isNaN(raw) && raw.trim() !== "") newVal = Number(raw);
         else newVal = raw;
+        recordChange('modified', path, { oldVal, newVal });
         setValueByPath(jsonData, path, newVal);
         markModified();
         const state = getExpandedState();
@@ -659,11 +744,17 @@ function doAddChild() {
     errorDiv.classList.add("hidden");
     const expandedState = getExpandedState();
     const parent = path.length === 0 ? jsonData : getValueByPath(jsonData, path);
+    let addedPath;
     if (isArray) {
+        const newIdx = parent.length;
         parent.push(parsed);
+        addedPath = [...path, newIdx];
     } else {
-        parent[keyInput.value.trim()] = parsed;
+        const newKey = keyInput.value.trim();
+        parent[newKey] = parsed;
+        addedPath = [...path, newKey];
     }
+    recordChange('added', addedPath, { value: parsed });
     markModified();
     hideAddChildDialog();
     rerenderJson();
@@ -676,6 +767,7 @@ function rerenderJson() {
     treeContainer.innerHTML = "";
     treeContainer.appendChild(renderValue(jsonData, [], undefined, false, -1));
     requestAnimationFrame(alignIndents);
+    requestAnimationFrame(applyDiffMarkers);
 }
 
 function alignIndents() {
@@ -759,7 +851,8 @@ function handleContextMenu(action, state) {
         case "duplicate":
             if (state.path.length > 0) {
                 const expandedState = getExpandedState();
-                duplicateValueByPath(jsonData, state.path);
+                const newPath = duplicateValueByPath(jsonData, state.path);
+                if (newPath) recordChange('added', newPath, { value: getValueByPath(jsonData, newPath) });
                 markModified();
                 rerenderJson();
                 restoreExpandedState(expandedState);
@@ -770,6 +863,20 @@ function handleContextMenu(action, state) {
                 showConfirm("Delete this node?", () => {
                     try {
                         const expandedState = getExpandedState();
+                        const parentPath = state.path.slice(0, -1);
+                        const parent = state.path.length === 1 ? jsonData : getValueByPath(jsonData, parentPath);
+                        const lastKey = state.path[state.path.length - 1];
+                        let position;
+                        if (Array.isArray(parent)) {
+                            position = parseInt(lastKey);
+                        } else {
+                            position = Object.keys(parent).indexOf(lastKey);
+                        }
+                        recordChange('deleted', state.path, {
+                            value: state.val,
+                            parentPath,
+                            position
+                        });
                         removeValueByPath(jsonData, state.path);
                         markModified();
                         rerenderJson();
@@ -808,6 +915,8 @@ async function saveFile() {
         const result = JSON.parse(resultStr);
         if (result.success) {
             modified = false;
+            clearDiff();
+            rerenderJson();
             document.getElementById("btnSave").disabled = true;
             document.getElementById("file-path-display").textContent = currentFilePath;
         } else {
@@ -839,6 +948,8 @@ async function doSaveAs() {
         if (result.success) {
             hideSaveAsDialog();
             modified = false;
+            clearDiff();
+            rerenderJson();
             currentFilePath = result.path || filePath;
             document.getElementById("btnSave").disabled = true;
             document.getElementById("file-path-display").textContent = currentFilePath;
