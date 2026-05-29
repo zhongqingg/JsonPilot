@@ -499,7 +499,9 @@ function startEditValue(span, oldVal, path) {
         const raw = input.value;
         span.classList.remove("editing");
         let newVal;
-        if (raw === "null") newVal = null;
+        if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
+            try { newVal = JSON.parse(raw); } catch(e) { newVal = raw; }
+        } else if (raw === "null") newVal = null;
         else if (raw === "true") newVal = true;
         else if (raw === "false") newVal = false;
         else if (!isNaN(raw) && raw.trim() !== "") newVal = Number(raw);
