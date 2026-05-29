@@ -61,9 +61,9 @@
     --bg-sidebar: #f3f3f3;
     --bg-sidebar-header: #e8e8e8;
     --bg-toolbar: #e8e8e8;
-    --bg-editor: transparent;
-    --bg-hover: #e8e8e8;
-    --bg-active: #d4d4d4;
+    --bg-editor: #f7f4eb;
+    --bg-hover: #ede8da;
+    --bg-active: #e3dcc8;
     --bg-input: #ffffff;
     --bg-dialog: #ffffff;
     --bg-dialog-overlay: rgba(0,0,0,0.2);
@@ -85,18 +85,18 @@
     --btn-saveas-bg: #2d6b2d;
     --btn-saveas-border: #2d6b2d;
     --btn-saveas-hover: #3a8a3a;
-    --json-key: #0451a5;
-    --json-string: #a31515;
-    --json-number: #098658;
-    --json-bool: #0451a5;
-    --json-null: #0451a5;
-    --json-bracket: #888;
-    --json-array-index: #098658;
-    --json-colon: #888;
-    --json-toggle: #888;
-    --json-toggle-hover: #555;
-    --comma-color: #888;
-    --info-color: #888;
+    --json-key: #003a8c;
+    --json-string: #8c1010;
+    --json-number: #006b3f;
+    --json-bool: #003a8c;
+    --json-null: #003a8c;
+    --json-bracket: #777;
+    --json-array-index: #006b3f;
+    --json-colon: #777;
+    --json-toggle: #777;
+    --json-toggle-hover: #444;
+    --comma-color: #777;
+    --info-color: #777;
     --scrollbar-thumb: #c1c1c1;
     --menu-bg: #ffffff;
     --menu-border: #c8c8c8;
@@ -311,8 +311,9 @@ body {
 #editor-area {
     flex: 1;
     overflow: auto;
-    padding: 8px 0;
+    padding: var(--editor-padding);
     position: relative;
+    background: var(--bg-editor);
 }
 
 #editor-area::-webkit-scrollbar {
