@@ -612,6 +612,28 @@ body {
     color: var(--text-dim);
 }
 
+#save-as-row {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+}
+#save-as-row input[type="text"] {
+    flex: 1;
+}
+.btn-browse {
+    padding: 6px 14px;
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    color: var(--text-primary);
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.btn-browse:hover {
+    background: var(--btn-cancel-hover);
+}
+
 .dialog-message input[type="text"] {
     width: 100%;
     padding: 6px 10px;

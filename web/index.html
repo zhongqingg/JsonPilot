@@ -61,7 +61,10 @@
         <div class="dialog-title">Save As</div>
         <div class="dialog-message">
             <label for="save-as-path">File path:</label>
-            <input type="text" id="save-as-path" placeholder="filename.json">
+            <div id="save-as-row">
+                <input type="text" id="save-as-path" placeholder="filename.json">
+                <button id="btnBrowse" class="btn-browse">Browse</button>
+            </div>
         </div>
         <div class="dialog-actions">
             <button id="save-as-cancel" class="btn-cancel">Cancel</button>

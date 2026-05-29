@@ -6,6 +6,9 @@
 #include <vector>
 #include <string>
 #include <algorithm>
+#include <windows.h>
+#include <shobjidl.h>
+#include <comdef.h>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -21,6 +24,7 @@ public:
         win.bind("save_file", this, &JsonEditorApp::bindSaveFile);
         win.bind("save_file_as", this, &JsonEditorApp::bindSaveFileAs);
         win.bind("get_config", this, &JsonEditorApp::bindGetConfig);
+        win.bind("show_save_dialog", this, &JsonEditorApp::bindShowSaveDialog);
     }
 
     void run() {
@@ -186,6 +190,43 @@ private:
             }
         }
         return tree;
+    }
+
+    void bindShowSaveDialog(webui::window::event* e) {
+        std::string result;
+        HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+        if (SUCCEEDED(hr)) {
+            IFileSaveDialog* pDlg = NULL;
+            hr = CoCreateInstance(CLSID_FileSaveDialog, NULL, CLSCTX_ALL,
+                                  IID_IFileSaveDialog, (void**)&pDlg);
+            if (SUCCEEDED(hr)) {
+                COMDLG_FILTERSPEC fileTypes[] = { { L"JSON Files", L"*.json" }, { L"All Files", L"*.*" } };
+                pDlg->SetFileTypes(2, fileTypes);
+                pDlg->SetDefaultExtension(L"json");
+                pDlg->SetTitle(L"Save JSON File");
+                hr = pDlg->Show(NULL);
+                if (SUCCEEDED(hr)) {
+                    IShellItem* pItem = NULL;
+                    hr = pDlg->GetResult(&pItem);
+                    if (SUCCEEDED(hr) && pItem) {
+                        LPWSTR pszPath = NULL;
+                        hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszPath);
+                        if (SUCCEEDED(hr) && pszPath) {
+                            int len = WideCharToMultiByte(CP_UTF8, 0, pszPath, -1, NULL, 0, NULL, NULL);
+                            if (len > 0) {
+                                result.resize(len - 1);
+                                WideCharToMultiByte(CP_UTF8, 0, pszPath, -1, &result[0], len, NULL, NULL);
+                            }
+                            CoTaskMemFree(pszPath);
+                        }
+                        pItem->Release();
+                    }
+                }
+                pDlg->Release();
+            }
+            CoUninitialize();
+        }
+        e->return_string(result);
     }
 
     void bindGetConfig(webui::window::event* e) {

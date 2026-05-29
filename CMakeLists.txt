@@ -20,7 +20,7 @@ target_include_directories(jsoneditor PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/webui/include
 )
 
-target_link_libraries(jsoneditor PRIVATE webui)
+target_link_libraries(jsoneditor PRIVATE webui ole32 runtimeobject)
 
 if(MSVC)
     # Use CONSOLE for debug builds, WINDOWS for release

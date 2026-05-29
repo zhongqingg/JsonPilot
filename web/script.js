@@ -119,6 +119,7 @@ async function init() {
 
     document.getElementById("save-as-ok").addEventListener("click", doSaveAs);
     document.getElementById("save-as-cancel").addEventListener("click", hideSaveAsDialog);
+    document.getElementById("btnBrowse").addEventListener("click", onBrowseSaveAs);
     document.getElementById("save-as-path").addEventListener("keydown", (e) => {
         if (e.key === "Enter") doSaveAs();
     });
@@ -954,6 +955,17 @@ function showSaveAsDialog() {
     document.getElementById("save-as-path").value = currentFilePath || "untitled.json";
     document.getElementById("save-as-dialog").classList.remove("hidden");
     setTimeout(() => document.getElementById("save-as-path").focus(), 100);
+}
+
+async function onBrowseSaveAs() {
+    try {
+        const path = await show_save_dialog();
+        if (path) {
+            document.getElementById("save-as-path").value = path;
+        }
+    } catch (e) {
+        console.error("Save dialog error:", e);
+    }
 }
 
 function hideSaveAsDialog() {
