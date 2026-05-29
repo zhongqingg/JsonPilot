@@ -13,9 +13,9 @@ async function init() {
     document.getElementById("btnSaveAs").addEventListener("click", showSaveAsDialog);
 
     document.getElementById("confirm-ok").addEventListener("click", () => {
+        const cb = confirmCallback;
         hideConfirm();
-        if (confirmCallback) confirmCallback();
-        confirmCallback = null;
+        if (cb) cb();
     });
     document.getElementById("confirm-cancel").addEventListener("click", hideConfirm);
 
