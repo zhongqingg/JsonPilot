@@ -234,6 +234,40 @@ body {
     min-height: 22px;
     line-height: 22px;
     white-space: nowrap;
+    position: relative;
+}
+
+.json-toggle {
+    position: absolute;
+    left: -18px;
+    top: 3px;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: #888;
+    font-size: 10px;
+    user-select: none;
+}
+
+.json-toggle:hover {
+    color: #ccc;
+}
+
+.json-toggle.expanded::before {
+    content: "▼";
+    font-size: 8px;
+}
+
+.json-toggle.collapsed::before {
+    content: "▶";
+    font-size: 8px;
+}
+
+.json-toggle.hidden {
+    display: none;
 }
 
 

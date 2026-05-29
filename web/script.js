@@ -258,11 +258,6 @@ function renderValue(val, path, key, isArrayElement, index) {
         line.className = "json-line";
         line.dataset.path = JSON.stringify(path);
 
-        if (key !== undefined && key !== null) {
-            const keySpan = makeKeySpan(key, isArrayElement, index, path);
-            if (keySpan) line.appendChild(keySpan);
-        }
-
         const toggle = document.createElement("span");
         toggle.className = "json-toggle expanded";
         if (len === 0) toggle.classList.add("hidden");
@@ -271,6 +266,11 @@ function renderValue(val, path, key, isArrayElement, index) {
             toggleNode(container);
         });
         line.appendChild(toggle);
+
+        if (key !== undefined && key !== null) {
+            const keySpan = makeKeySpan(key, isArrayElement, index, path);
+            if (keySpan) line.appendChild(keySpan);
+        }
 
         const bracketOpen = document.createElement("span");
         bracketOpen.className = "json-bracket";
@@ -297,11 +297,6 @@ function renderValue(val, path, key, isArrayElement, index) {
 
         const closeLine = document.createElement("div");
         closeLine.className = "json-line";
-        const closeToggle = document.createElement("span");
-        closeToggle.className = "json-toggle hidden";
-        closeToggle.style.visibility = "hidden";
-        closeToggle.textContent = " ";
-        closeLine.appendChild(closeToggle);
         const closeSpan = document.createElement("span");
         closeSpan.className = "json-bracket";
         closeSpan.textContent = isArray ? "]" : "}";
@@ -315,11 +310,6 @@ function renderValue(val, path, key, isArrayElement, index) {
         const line = document.createElement("div");
         line.className = "json-line";
         line.dataset.path = JSON.stringify(path);
-        const toggle = document.createElement("span");
-        toggle.className = "json-toggle hidden";
-        toggle.style.visibility = "hidden";
-        toggle.textContent = " ";
-        line.appendChild(toggle);
         const keySpan = makeKeySpan(key, isArrayElement, index, path);
         if (keySpan) line.appendChild(keySpan);
         const valueSpan = makeValueSpan(val, path);
@@ -573,20 +563,21 @@ function rerenderJson() {
 }
 
 function alignIndents() {
-    const ch4 = 4 * getChWidth();
+    const indent = 2 * getChWidth();
     const nodes = document.querySelectorAll("#json-tree .json-node");
     for (const node of nodes) {
         const firstLine = node.querySelector(":scope > .json-line");
         if (!firstLine) continue;
+        const keySpan = firstLine.querySelector(".json-key");
         const bracketSpan = firstLine.querySelector(".json-bracket");
         const children = node.querySelector(":scope > .json-children");
         const allLines = node.querySelectorAll(":scope > .json-line");
         const lastLine = allLines.length > 1 ? allLines[allLines.length - 1] : null;
         if (!bracketSpan) continue;
-        const br = bracketSpan.getBoundingClientRect();
         const lr = firstLine.getBoundingClientRect();
+        const br = bracketSpan.getBoundingClientRect();
         const off = br.left - lr.left;
-        if (children) children.style.marginLeft = (off + ch4) + "px";
+        if (children) children.style.marginLeft = (off + indent) + "px";
         if (lastLine && lastLine !== firstLine && lastLine.style.display !== "none") {
             lastLine.style.paddingLeft = off + "px";
         }
