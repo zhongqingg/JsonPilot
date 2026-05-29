@@ -236,9 +236,6 @@ body {
     white-space: nowrap;
 }
 
-.bracket-open-line {
-    border-left: 3px solid transparent;
-}
 
 .json-line:hover {
     background: #2a2d2e;
@@ -339,7 +336,7 @@ body {
 }
 
 .json-children {
-    margin-left: 20px;
+    margin-left: 32px;
 }
 
 .json-children.collapsed {

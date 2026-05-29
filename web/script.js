@@ -211,45 +211,34 @@ function restoreExpandedState(state) {
         if (!children) return;
         if (state.has(pathStr)) {
             children.classList.remove("collapsed");
-            const toggle = node.querySelector(":scope > .json-line .json-toggle");
             const lines = node.querySelectorAll(":scope > .json-line");
-            const bracketOpenLine = findBracketOpenLine(lines);
-            const bracketCloseLine = lines[lines.length - 1];
+            const first = lines[0];
+            const last = lines[lines.length - 1];
+            const toggle = first && first.querySelector(".json-toggle");
+            const bracket = first && first.querySelector(".json-bracket");
             if (toggle) toggle.className = "json-toggle expanded";
-            if (bracketOpenLine) {
-                const bc = bracketOpenLine.querySelector(".json-bracket");
-                if (bc) {
-                    const val = getValueByPath(jsonData, JSON.parse(pathStr));
-                    bc.textContent = Array.isArray(val) ? "[" : "{";
-                }
+            if (bracket) {
+                const val = getValueByPath(jsonData, JSON.parse(pathStr));
+                bracket.textContent = Array.isArray(val) ? "[" : "{";
             }
-            if (bracketCloseLine) bracketCloseLine.style.display = "";
+            if (last) last.style.display = "";
         } else {
             children.classList.add("collapsed");
-            const toggle = node.querySelector(":scope > .json-line .json-toggle");
             const lines = node.querySelectorAll(":scope > .json-line");
-            const bracketOpenLine = findBracketOpenLine(lines);
-            const bracketCloseLine = lines[lines.length - 1];
+            const first = lines[0];
+            const last = lines[lines.length - 1];
+            const toggle = first && first.querySelector(".json-toggle");
+            const bracket = first && first.querySelector(".json-bracket");
             if (toggle) toggle.className = "json-toggle collapsed";
-            if (bracketOpenLine) {
-                const bc = bracketOpenLine.querySelector(".json-bracket");
-                if (bc) {
-                    const val = getValueByPath(jsonData, JSON.parse(pathStr));
-                    if (Array.isArray(val)) bc.textContent = "[" + val.length + " items]";
-                    else if (val && typeof val === "object") bc.textContent = "{" + Object.keys(val).length + " keys}";
-                    else bc.textContent = "{...}";
-                }
+            if (bracket) {
+                const val = getValueByPath(jsonData, JSON.parse(pathStr));
+                if (Array.isArray(val)) bracket.textContent = "[" + val.length + " items]";
+                else if (val && typeof val === "object") bracket.textContent = "{" + Object.keys(val).length + " keys}";
+                else bracket.textContent = "{...}";
             }
-            if (bracketCloseLine) bracketCloseLine.style.display = "none";
+            if (last) last.style.display = "none";
         }
     });
-}
-
-function findBracketOpenLine(lines) {
-    for (let i = lines.length - 1; i >= 0; i--) {
-        if (lines[i].classList.contains("bracket-open-line")) return lines[i];
-    }
-    return null;
 }
 
 function renderValue(val, path, key, isArrayElement, index) {
@@ -263,25 +252,14 @@ function renderValue(val, path, key, isArrayElement, index) {
         const keys = isArray ? val.map((_, i) => i) : Object.keys(val);
         const len = keys.length;
 
+        const line = document.createElement("div");
+        line.className = "json-line";
+        line.dataset.path = JSON.stringify(path);
+
         if (key !== undefined && key !== null) {
             const keySpan = makeKeySpan(key, isArrayElement, index, path);
-            if (keySpan) {
-                const keyLine = document.createElement("div");
-                keyLine.className = "json-line";
-                keyLine.dataset.path = JSON.stringify(path);
-                const ht = document.createElement("span");
-                ht.className = "json-toggle hidden";
-                ht.style.visibility = "hidden";
-                ht.textContent = " ";
-                keyLine.appendChild(ht);
-                keyLine.appendChild(keySpan);
-                container.appendChild(keyLine);
-            }
+            if (keySpan) line.appendChild(keySpan);
         }
-
-        const bracketLine = document.createElement("div");
-        bracketLine.className = "json-line bracket-open-line";
-        bracketLine.dataset.path = JSON.stringify(path);
 
         const toggle = document.createElement("span");
         toggle.className = "json-toggle expanded";
@@ -290,22 +268,21 @@ function renderValue(val, path, key, isArrayElement, index) {
             e.stopPropagation();
             toggleNode(container);
         });
+        line.appendChild(toggle);
 
         const bracketOpen = document.createElement("span");
         bracketOpen.className = "json-bracket";
         bracketOpen.textContent = isArray ? "[" : "{";
-
-        bracketLine.appendChild(toggle);
-        bracketLine.appendChild(bracketOpen);
+        line.appendChild(bracketOpen);
 
         if (len > 0) {
             const info = document.createElement("span");
             info.style.cssText = "color:#888;font-size:12px;margin-left:6px;";
             info.textContent = "// " + len + (isArray ? " items" : " keys");
-            bracketLine.appendChild(info);
+            line.appendChild(info);
         }
 
-        container.appendChild(bracketLine);
+        container.appendChild(line);
 
         const children = document.createElement("div");
         children.className = "json-children";
@@ -358,32 +335,31 @@ function toggleNode(container) {
     if (!children) return;
     const isCollapsed = children.classList.toggle("collapsed");
     const lines = container.querySelectorAll(":scope > .json-line");
-    const bracketOpenLine = findBracketOpenLine(lines);
-    const bracketCloseLine = lines[lines.length - 1];
+    const first = lines[0];
+    const last = lines[lines.length - 1];
+    const toggle = first && first.querySelector(".json-toggle");
+    const bracket = first && first.querySelector(".json-bracket");
+    if (toggle) toggle.className = isCollapsed ? "json-toggle collapsed" : "json-toggle expanded";
 
-    if (bracketOpenLine) {
-        const toggle = bracketOpenLine.querySelector(".json-toggle");
-        if (toggle) toggle.className = isCollapsed ? "json-toggle collapsed" : "json-toggle expanded";
-        const bc = bracketOpenLine.querySelector(".json-bracket");
-        if (bc) {
-            if (isCollapsed) {
-                const pathStr = container.dataset.path;
-                if (pathStr) {
-                    try {
-                        const val = getValueByPath(jsonData, JSON.parse(pathStr));
-                        if (Array.isArray(val)) bc.textContent = "[" + val.length + " items]";
-                        else if (val && typeof val === "object") bc.textContent = "{" + Object.keys(val).length + " keys}";
-                        else bc.textContent = "{...}";
-                    } catch(e) { bc.textContent = "{...}"; }
-                }
-            } else {
-                const val = getValueByPath(jsonData, JSON.parse(container.dataset.path));
-                bc.textContent = Array.isArray(val) ? "[" : "{";
+    if (isCollapsed) {
+        if (bracket) {
+            const pathStr = container.dataset.path;
+            if (pathStr) {
+                try {
+                    const val = getValueByPath(jsonData, JSON.parse(pathStr));
+                    if (Array.isArray(val)) bracket.textContent = "[" + val.length + " items]";
+                    else if (val && typeof val === "object") bracket.textContent = "{" + Object.keys(val).length + " keys}";
+                    else bracket.textContent = "{...}";
+                } catch(e) { bracket.textContent = "{...}"; }
             }
         }
-    }
-    if (bracketCloseLine) {
-        bracketCloseLine.style.display = isCollapsed ? "none" : "";
+        if (last) last.style.display = "none";
+    } else {
+        if (bracket) {
+            const val = getValueByPath(jsonData, JSON.parse(container.dataset.path));
+            bracket.textContent = Array.isArray(val) ? "[" : "{";
+        }
+        if (last) last.style.display = "";
     }
 }
 
@@ -399,13 +375,11 @@ function makeKeySpan(key, isArrayElement, index, path) {
         span.appendChild(document.createTextNode(": "));
     } else {
         const q1 = document.createElement("span");
-        q1.style.color = "#888";
-        q1.textContent = '"';
+        q1.style.color = "#888"; q1.textContent = '"';
         span.appendChild(q1);
         span.appendChild(document.createTextNode(key));
         const q2 = document.createElement("span");
-        q2.style.color = "#888";
-        q2.textContent = '"';
+        q2.style.color = "#888"; q2.textContent = '"';
         span.appendChild(q2);
         const colon = document.createElement("span");
         colon.className = "json-colon";
@@ -535,18 +509,16 @@ function expandAll() {
     document.querySelectorAll("#json-tree .json-toggle.collapsed").forEach(el => el.className = "json-toggle expanded");
     document.querySelectorAll("#json-tree .json-node").forEach(node => {
         const lines = node.querySelectorAll(":scope > .json-line");
-        const bol = findBracketOpenLine(lines);
-        const bcl = lines[lines.length - 1];
-        if (bol) {
-            const bc = bol.querySelector(".json-bracket");
-            if (bc) {
-                try {
-                    const val = getValueByPath(jsonData, JSON.parse(node.dataset.path));
-                    bc.textContent = Array.isArray(val) ? "[" : "{";
-                } catch(e) { bc.textContent = "{"; }
-            }
+        const first = lines[0];
+        const last = lines[lines.length - 1];
+        const bracket = first && first.querySelector(".json-bracket");
+        if (bracket) {
+            try {
+                const val = getValueByPath(jsonData, JSON.parse(node.dataset.path));
+                bracket.textContent = Array.isArray(val) ? "[" : "{";
+            } catch(e) { bracket.textContent = "{"; }
         }
-        if (bcl) bcl.style.display = "";
+        if (last) last.style.display = "";
     });
 }
 
@@ -555,23 +527,21 @@ function collapseAll() {
     document.querySelectorAll("#json-tree .json-toggle.expanded").forEach(el => el.className = "json-toggle collapsed");
     document.querySelectorAll("#json-tree .json-node").forEach(node => {
         const lines = node.querySelectorAll(":scope > .json-line");
-        const bol = findBracketOpenLine(lines);
-        const bcl = lines[lines.length - 1];
-        if (bol) {
-            const bc = bol.querySelector(".json-bracket");
-            if (bc) {
-                const pathStr = node.dataset.path;
-                if (pathStr) {
-                    try {
-                        const val = getValueByPath(jsonData, JSON.parse(pathStr));
-                        if (Array.isArray(val)) bc.textContent = "[" + val.length + " items]";
-                        else if (val && typeof val === "object") bc.textContent = "{" + Object.keys(val).length + " keys}";
-                        else bc.textContent = "{...}";
-                    } catch(e) { bc.textContent = "{...}"; }
-                }
+        const first = lines[0];
+        const last = lines[lines.length - 1];
+        const bracket = first && first.querySelector(".json-bracket");
+        if (bracket) {
+            const pathStr = node.dataset.path;
+            if (pathStr) {
+                try {
+                    const val = getValueByPath(jsonData, JSON.parse(pathStr));
+                    if (Array.isArray(val)) bracket.textContent = "[" + val.length + " items]";
+                    else if (val && typeof val === "object") bracket.textContent = "{" + Object.keys(val).length + " keys}";
+                    else bracket.textContent = "{...}";
+                } catch(e) { bracket.textContent = "{...}"; }
             }
         }
-        if (bcl) bcl.style.display = "none";
+        if (last) last.style.display = "none";
     });
 }
 
