@@ -25,10 +25,29 @@ async function init() {
         if (e.key === "Enter") doSaveAs();
     });
 
+    document.getElementById("add-ok").addEventListener("click", doAddChild);
+    document.getElementById("add-cancel").addEventListener("click", hideAddChildDialog);
+    document.getElementById("add-key-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            document.getElementById("add-value-input").focus();
+        }
+    });
+    document.getElementById("add-value-input").addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+            e.preventDefault();
+            doAddChild();
+        }
+    });
+
     document.addEventListener("click", hideContextMenu);
     document.addEventListener("contextmenu", (e) => e.preventDefault());
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
+            if (!document.getElementById("add-dialog").classList.contains("hidden")) {
+                hideAddChildDialog();
+                return;
+            }
             if (!document.getElementById("context-menu").classList.contains("hidden")) {
                 hideContextMenu();
             }
@@ -554,6 +573,75 @@ function getChWidth() {
     return cachedChWidth;
 }
 
+let addDialogState = null;
+
+function showAddChildDialog(path, isArray) {
+    const dialog = document.getElementById("add-dialog");
+    const keyGroup = document.getElementById("add-key-group");
+    const keyInput = document.getElementById("add-key-input");
+    const valueInput = document.getElementById("add-value-input");
+    const errorDiv = document.getElementById("add-error");
+    keyInput.value = "";
+    valueInput.value = "";
+    errorDiv.classList.add("hidden");
+    keyGroup.style.display = isArray ? "none" : "";
+    dialog.classList.remove("hidden");
+    addDialogState = { path, isArray };
+    if (isArray) {
+        setTimeout(() => valueInput.focus(), 100);
+    } else {
+        setTimeout(() => keyInput.focus(), 100);
+    }
+}
+
+function hideAddChildDialog() {
+    document.getElementById("add-dialog").classList.add("hidden");
+    addDialogState = null;
+}
+
+function doAddChild() {
+    if (!addDialogState) return;
+    const { path, isArray } = addDialogState;
+    const keyInput = document.getElementById("add-key-input");
+    const valueInput = document.getElementById("add-value-input");
+    const errorDiv = document.getElementById("add-error");
+    const raw = valueInput.value.trim();
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    } catch (e) {
+        errorDiv.textContent = "Invalid JSON: " + e.message;
+        errorDiv.classList.remove("hidden");
+        return;
+    }
+    if (!isArray) {
+        const key = keyInput.value.trim();
+        if (!key) {
+            errorDiv.textContent = "Key cannot be empty";
+            errorDiv.classList.remove("hidden");
+            return;
+        }
+        const parent = path.length === 0 ? jsonData : getValueByPath(jsonData, path);
+        if (parent && typeof parent === "object" && key in parent) {
+            errorDiv.textContent = "Key '" + key + "' already exists";
+            errorDiv.classList.remove("hidden");
+            return;
+        }
+    }
+    errorDiv.classList.add("hidden");
+    const expandedState = getExpandedState();
+    const parent = path.length === 0 ? jsonData : getValueByPath(jsonData, path);
+    if (isArray) {
+        parent.push(parsed);
+    } else {
+        parent[keyInput.value.trim()] = parsed;
+    }
+    markModified();
+    hideAddChildDialog();
+    rerenderJson();
+    restoreExpandedState(expandedState);
+}
+
 function rerenderJson() {
     if (!jsonData) return;
     const treeContainer = document.getElementById("json-tree");
@@ -607,6 +695,8 @@ function showContextMenu(x, y, path, key, isArrayElement, val, isObject) {
     menu.style.top = Math.min(y, window.innerHeight - 150) + "px";
     menu.classList.remove("hidden");
     menu._state = { path, key, isArrayElement, val, isObject };
+    const addItem = menu.querySelector('[data-action="add-child"]');
+    if (addItem) addItem.style.display = isObject ? "" : "none";
     document.querySelectorAll("#context-menu .menu-item").forEach(item => {
         const action = item.dataset.action;
         item.onclick = () => handleContextMenu(action, menu._state);
@@ -620,6 +710,11 @@ function hideContextMenu() {
 function handleContextMenu(action, state) {
     hideContextMenu();
     switch (action) {
+        case "add-child":
+            if (state.val && typeof state.val === "object") {
+                showAddChildDialog(state.path, Array.isArray(state.val));
+            }
+            break;
         case "copy-key":
             if (state.key !== undefined && state.key !== null && state.key !== "") {
                 navigator.clipboard.writeText(state.key).catch(() => {});

@@ -33,6 +33,8 @@
 </div>
 
 <div id="context-menu" class="context-menu hidden">
+    <div class="menu-item" data-action="add-child">Add Child Item</div>
+    <div class="menu-separator"></div>
     <div class="menu-item" data-action="copy-key">Copy Key</div>
     <div class="menu-item" data-action="copy-value">Copy Value</div>
     <div class="menu-separator"></div>
@@ -61,6 +63,25 @@
         <div class="dialog-actions">
             <button id="save-as-cancel" class="btn-cancel">Cancel</button>
             <button id="save-as-ok" class="btn-ok">Save</button>
+        </div>
+    </div>
+</div>
+
+<div id="add-dialog" class="dialog-overlay hidden">
+    <div class="dialog-box">
+        <div class="dialog-title">Add Child Item</div>
+        <div class="dialog-message">
+            <div id="add-key-group">
+                <label for="add-key-input">Key:</label>
+                <input type="text" id="add-key-input" placeholder="key name">
+            </div>
+            <label for="add-value-input">Value (JSON):</label>
+            <textarea id="add-value-input" placeholder='Enter JSON value, e.g. "string", 42, true, null, {...}, [...]'></textarea>
+            <div id="add-error" class="dialog-error hidden"></div>
+        </div>
+        <div class="dialog-actions">
+            <button id="add-cancel" class="btn-cancel">Cancel</button>
+            <button id="add-ok" class="btn-ok">Add</button>
         </div>
     </div>
 </div>
