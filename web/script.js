@@ -21,30 +21,29 @@ function applyDiffMarkers() {
         el.classList.remove('line-modified', 'line-added', 'value-modified', 'key-modified');
     });
 
-    function findLineByPath(pathStr) {
-        const lines = document.querySelectorAll('.json-line');
-        for (const l of lines) { if (l.dataset.path === pathStr) return l; }
-        return null;
-    }
     function findNodeByPath(pathStr) {
         const nodes = document.querySelectorAll('.json-node');
         for (const n of nodes) { if (n.dataset.path === pathStr) return n; }
         return null;
     }
+    function highlightNode(node, cls) {
+        if (!node) return;
+        node.querySelectorAll('.json-line').forEach(line => line.classList.add(cls));
+        node.querySelectorAll('.json-value').forEach(v => v.classList.add('value-modified'));
+        if (cls === 'line-modified') {
+            const firstLine = node.querySelector(':scope > .json-line');
+            if (firstLine) {
+                firstLine.querySelectorAll('.json-key').forEach(k => k.classList.add('key-modified'));
+            }
+        }
+    }
 
     for (const pathStr of Object.keys(diffData.modified)) {
-        const line = findLineByPath(pathStr);
-        if (!line) continue;
-        line.classList.add('line-modified');
-        line.querySelectorAll('.json-value').forEach(v => v.classList.add('value-modified'));
-        line.querySelectorAll('.json-key').forEach(k => k.classList.add('key-modified'));
+        highlightNode(findNodeByPath(pathStr), 'line-modified');
     }
 
     for (const pathStr of Object.keys(diffData.added)) {
-        const line = findLineByPath(pathStr);
-        if (!line) continue;
-        line.classList.add('line-added');
-        line.querySelectorAll('.json-value').forEach(v => v.classList.add('value-modified'));
+        highlightNode(findNodeByPath(pathStr), 'line-added');
     }
 
     for (const [pathStr, info] of Object.entries(diffData.deleted)) {
@@ -116,6 +115,13 @@ async function init() {
         if (cb) cb();
     });
     document.getElementById("confirm-cancel").addEventListener("click", hideConfirm);
+
+    window.addEventListener("beforeunload", (e) => {
+        if (modified) {
+            e.preventDefault();
+            e.returnValue = "";
+        }
+    });
 
     document.getElementById("save-as-ok").addEventListener("click", doSaveAs);
     document.getElementById("save-as-cancel").addEventListener("click", hideSaveAsDialog);
@@ -582,7 +588,10 @@ function startEditKey(span, oldKey, path) {
     input.focus();
     input.select();
         const finish = () => {
-            const newKey = input.value.trim();
+            let newKey = input.value.trim();
+            if (newKey.length >= 2 && newKey.startsWith('"') && newKey.endsWith('"')) {
+                try { const p = JSON.parse(newKey); if (typeof p === 'string') newKey = p; } catch(e) {}
+            }
             span.classList.remove("editing");
             if (newKey && newKey !== oldKey) {
                 const parent = getValueByPath(jsonData, path.slice(0, -1));
@@ -749,7 +758,10 @@ function doAddChild() {
         return;
     }
     if (!isArray) {
-        const key = keyInput.value.trim();
+        let key = keyInput.value.trim();
+        if (key.length >= 2 && key.startsWith('"') && key.endsWith('"')) {
+            try { const p = JSON.parse(key); if (typeof p === 'string') key = p; } catch(e) {}
+        }
         if (!key) {
             errorDiv.textContent = "Key cannot be empty";
             errorDiv.classList.remove("hidden");
@@ -913,17 +925,24 @@ function handleContextMenu(action, state) {
     }
 }
 
-function showConfirm(message, callback) {
+function showConfirm(message, callback, okText) {
     document.getElementById("confirm-message").textContent = message;
-    document.getElementById("confirm-ok").textContent = "OK";
+    document.getElementById("confirm-ok").textContent = okText || "OK";
     document.getElementById("confirm-dialog").classList.remove("hidden");
     confirmCallback = callback;
 }
 
 function hideConfirm() {
     document.getElementById("confirm-dialog").classList.add("hidden");
+    document.getElementById("confirm-ok").textContent = "OK";
     confirmCallback = null;
 }
+
+window.__hasUnsavedChanges = () => modified;
+window.__showCloseConfirm = () => {
+    showConfirm("You have unsaved changes. Leave without saving?",
+        () => webui.call('force_exit', ''), "Leave");
+};
 
 function showError(msg) {
     showConfirm(msg, () => {});
