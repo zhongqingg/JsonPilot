@@ -1,0 +1,87 @@
+{
+  "module": {
+    "id": "Measure",
+    "name": "组件",
+    "hardware": [
+      {
+        "id": "lp1",
+        "name": "轮盘1",
+        "type": "motor",
+        "parameters": [
+          {
+            "name": "servername",
+            "value": "${userInput.bundle}/lp1"
+          },
+          {
+            "name": "gear",
+            "value": "1,档位1-透过1.5%(保护位置)|2,档位2-透过2.5%|3,档位3-透过5%|4,档位4-透过10%|5,档位5-透过20%|6,档位6-透过40%|7,档位7-透过80%|8,档位8-透过99.8%"
+          }
+        ]
+      },
+      {
+        "id": "lp2",
+        "name": "轮盘2",
+        "type": "motor",
+        "parameters": [
+          {
+            "name": "servername",
+            "value": "JP_${userInput.bundle}/lp2"
+          },
+          {
+            "name": "gear",
+            "value": "1,档位1-透过1.5%(保护位置)|2,档位2-透过2.5%|3,档位3-透过5%|4,档位4-透过10%|5,档位5-透过20%|6,档位6-透过40%|7,档位7-透过80%|8,档位8-透过99.8%"
+          }
+        ]
+      }
+    ],
+    "interfaces": [
+      {
+        "id": "tandby",
+        "name": "运动准备",
+        "hardware": [
+          {
+            "id": "lp1",
+            "type": "motor",
+            "parameters": [
+              {}
+            ]
+          },
+          {
+            "id": "lp2",
+            "type": "motor",
+            "parameters": [
+              {}
+            ]
+          }
+        ],
+        "parameters": [
+          {}
+        ]
+      },
+      {
+        "id": "measures",
+        "name": "测量",
+        "hardware": [
+          {
+            "id": "c1",
+            "type": "camera",
+            "parameters": [
+              {}
+            ]
+          },
+          {
+            "id": "c2",
+            "type": "camera",
+            "parameters": [
+              {}
+            ]
+          }
+        ],
+        "parameters": [
+          {}
+        ]
+      }
+    ],
+    "module_type": "FF"
+  }
+}

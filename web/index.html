@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSON Editor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+    <div id="sidebar">
+        <div id="sidebar-header">
+            <h3>JSON Files</h3>
+            <button id="btnRefresh" title="Refresh file tree">↻</button>
+        </div>
+        <div id="file-tree"></div>
+    </div>
+    <div id="main-content">
+        <div id="toolbar">
+            <span id="file-path-display"></span>
+            <div id="toolbar-actions">
+                <button id="btnExpandAll">Expand All</button>
+                <button id="btnCollapseAll">Collapse All</button>
+                <button id="btnSave" disabled>Save</button>
+                <button id="btnSaveAs" disabled>Save As</button>
+            </div>
+        </div>
+        <div id="editor-area">
+            <div id="empty-state">Select a JSON file from the left panel</div>
+            <div id="json-tree"></div>
+        </div>
+    </div>
+</div>
+
+<div id="context-menu" class="context-menu hidden">
+    <div class="menu-item" data-action="copy-key">Copy Key</div>
+    <div class="menu-item" data-action="copy-value">Copy Value</div>
+    <div class="menu-separator"></div>
+    <div class="menu-item" data-action="duplicate">Duplicate</div>
+    <div class="menu-item" data-action="delete">Delete</div>
+</div>
+
+<div id="confirm-dialog" class="dialog-overlay hidden">
+    <div class="dialog-box">
+        <div class="dialog-title">Confirm</div>
+        <div class="dialog-message" id="confirm-message">Are you sure?</div>
+        <div class="dialog-actions">
+            <button id="confirm-cancel" class="btn-cancel">Cancel</button>
+            <button id="confirm-ok" class="btn-ok">OK</button>
+        </div>
+    </div>
+</div>
+
+<div id="save-as-dialog" class="dialog-overlay hidden">
+    <div class="dialog-box">
+        <div class="dialog-title">Save As</div>
+        <div class="dialog-message">
+            <label for="save-as-path">File path:</label>
+            <input type="text" id="save-as-path" placeholder="filename.json">
+        </div>
+        <div class="dialog-actions">
+            <button id="save-as-cancel" class="btn-cancel">Cancel</button>
+            <button id="save-as-ok" class="btn-ok">Save</button>
+        </div>
+    </div>
+</div>
+
+<script src="webui.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
