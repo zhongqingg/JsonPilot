@@ -25,7 +25,6 @@ public:
         win.bind("save_file_as", this, &JsonEditorApp::bindSaveFileAs);
         win.bind("get_config", this, &JsonEditorApp::bindGetConfig);
         win.bind("show_save_dialog", this, &JsonEditorApp::bindShowSaveDialog);
-        win.bind("force_exit", this, &JsonEditorApp::onForceExit);
         win.set_close_handler_wv(closeHandler);
     }
 
@@ -36,27 +35,39 @@ public:
 
         win.set_root_folder(webPath);
         win.show("");
-        webui::wait();
+
+        while (true) {
+            if (closeRequested && !forceClosing) {
+                closeRequested = false;
+                char result[8] = {0};
+                bool ok = win.script("modified ? 1 : 0", 2000, result, sizeof(result));
+                bool hasChanges = ok && strcmp(result, "1") == 0;
+                if (hasChanges) {
+                    int ret = MessageBoxA(NULL,
+                        "You have unsaved changes.\nLeave without saving?",
+                        "Unsaved Changes", MB_YESNO | MB_ICONWARNING | MB_SYSTEMMODAL);
+                    if (ret == IDYES) {
+                        forceClosing = true;
+                        webui_exit();
+                    }
+                } else {
+                    forceClosing = true;
+                    webui_exit();
+                }
+            }
+            if (!webui_wait_async()) break;
+            Sleep(50);
+        }
     }
 
 private:
     static bool forceClosing;
+    static bool closeRequested;
 
     static bool closeHandler(size_t window) {
         if (forceClosing) return true;
-        std::string js =
-            "if (typeof window.__hasUnsavedChanges === 'function' && window.__hasUnsavedChanges()) {"
-            "  window.__showCloseConfirm();"
-            "} else {"
-            "  webui.call('force_exit', '');"
-            "}";
-        webui_script(window, js.c_str(), 0, NULL, 0);
+        closeRequested = true;
         return false;
-    }
-
-    void onForceExit(webui::window::event*) {
-        forceClosing = true;
-        webui_exit();
     }
 
     webui::window win;
@@ -381,6 +392,7 @@ private:
 };
 
 bool JsonEditorApp::forceClosing = false;
+bool JsonEditorApp::closeRequested = false;
 
 int main() {
     JsonEditorApp app;

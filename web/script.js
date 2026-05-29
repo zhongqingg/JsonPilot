@@ -757,19 +757,20 @@ function doAddChild() {
         errorDiv.classList.remove("hidden");
         return;
     }
+    let newKey = "";
     if (!isArray) {
-        let key = keyInput.value.trim();
-        if (key.length >= 2 && key.startsWith('"') && key.endsWith('"')) {
-            try { const p = JSON.parse(key); if (typeof p === 'string') key = p; } catch(e) {}
+        newKey = keyInput.value.trim();
+        if (newKey.length >= 2 && newKey.startsWith('"') && newKey.endsWith('"')) {
+            try { const p = JSON.parse(newKey); if (typeof p === 'string') newKey = p; } catch(e) {}
         }
-        if (!key) {
+        if (!newKey) {
             errorDiv.textContent = "Key cannot be empty";
             errorDiv.classList.remove("hidden");
             return;
         }
         const parent = path.length === 0 ? jsonData : getValueByPath(jsonData, path);
-        if (parent && typeof parent === "object" && key in parent) {
-            errorDiv.textContent = "Key '" + key + "' already exists";
+        if (parent && typeof parent === "object" && newKey in parent) {
+            errorDiv.textContent = "Key '" + newKey + "' already exists";
             errorDiv.classList.remove("hidden");
             return;
         }
@@ -783,7 +784,6 @@ function doAddChild() {
         parent.push(parsed);
         addedPath = [...path, newIdx];
     } else {
-        const newKey = keyInput.value.trim();
         parent[newKey] = parsed;
         addedPath = [...path, newKey];
     }
@@ -938,11 +938,7 @@ function hideConfirm() {
     confirmCallback = null;
 }
 
-window.__hasUnsavedChanges = () => modified;
-window.__showCloseConfirm = () => {
-    showConfirm("You have unsaved changes. Leave without saving?",
-        () => webui.call('force_exit', ''), "Leave");
-};
+
 
 function showError(msg) {
     showConfirm(msg, () => {});
