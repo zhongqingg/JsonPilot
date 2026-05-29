@@ -40,9 +40,9 @@ public:
             if (closeRequested && !forceClosing) {
                 closeRequested = false;
                 char result[8] = {0};
-                bool ok = win.script("modified ? 1 : 0", 2000, result, sizeof(result));
+                bool ok = win.script("modified ? 1 : 0", 3000, result, sizeof(result));
                 bool hasChanges = ok && strcmp(result, "1") == 0;
-                if (hasChanges) {
+                if (!ok || hasChanges) {
                     int ret = MessageBoxA(NULL,
                         "You have unsaved changes.\nLeave without saving?",
                         "Unsaved Changes", MB_YESNO | MB_ICONWARNING | MB_SYSTEMMODAL);
