@@ -336,7 +336,7 @@ body {
 }
 
 .json-children {
-    margin-left: 4ch;
+    margin-left: 0;
 }
 
 .json-children.collapsed {

@@ -147,7 +147,7 @@ function updateUI() {
     treeContainer.innerHTML = "";
     treeContainer.appendChild(renderValue(jsonData, [], undefined, false, -1));
     expandAll();
-    requestAnimationFrame(alignCloseBrackets);
+    requestAnimationFrame(alignIndents);
 }
 
 function getValueByPath(data, path) {
@@ -240,7 +240,7 @@ function restoreExpandedState(state) {
             if (last) last.style.display = "none";
         }
     });
-    requestAnimationFrame(alignCloseBrackets);
+    requestAnimationFrame(alignIndents);
 }
 
 function renderValue(val, path, key, isArrayElement, index) {
@@ -363,7 +363,7 @@ function toggleNode(container) {
         }
         if (last) {
             last.style.display = "";
-            requestAnimationFrame(alignCloseBrackets);
+            requestAnimationFrame(alignIndents);
         }
     }
 }
@@ -525,7 +525,7 @@ function expandAll() {
         }
         if (last) last.style.display = "";
     });
-    requestAnimationFrame(alignCloseBrackets);
+    requestAnimationFrame(alignIndents);
 }
 
 function collapseAll() {
@@ -551,33 +551,45 @@ function collapseAll() {
     });
 }
 
+let cachedChWidth = 0;
+
+function getChWidth() {
+    if (cachedChWidth > 0) return cachedChWidth;
+    const temp = document.createElement("span");
+    temp.textContent = "00000";
+    temp.style.cssText = "position:fixed;visibility:hidden;font-size:inherit;font-family:inherit;";
+    document.body.appendChild(temp);
+    cachedChWidth = temp.getBoundingClientRect().width / 5;
+    document.body.removeChild(temp);
+    return cachedChWidth;
+}
+
 function rerenderJson() {
     if (!jsonData) return;
     const treeContainer = document.getElementById("json-tree");
     treeContainer.innerHTML = "";
     treeContainer.appendChild(renderValue(jsonData, [], undefined, false, -1));
-    requestAnimationFrame(alignCloseBrackets);
+    requestAnimationFrame(alignIndents);
 }
 
-function alignCloseBrackets() {
+function alignIndents() {
+    const ch4 = 4 * getChWidth();
     const nodes = document.querySelectorAll("#json-tree .json-node");
     for (const node of nodes) {
-        const pathStr = node.dataset.path;
-        if (!pathStr) continue;
-        try {
-            const val = JSON.parse(pathStr);
-        } catch(e) { continue; }
-        const lines = node.querySelectorAll(":scope > .json-line");
-        if (lines.length < 2) continue;
-        const first = lines[0];
-        const last = lines[lines.length - 1];
-        if (!first || !last || last.style.display === "none") continue;
-        const bracketSpan = first.querySelector(".json-bracket");
+        const firstLine = node.querySelector(":scope > .json-line");
+        if (!firstLine) continue;
+        const bracketSpan = firstLine.querySelector(".json-bracket");
+        const children = node.querySelector(":scope > .json-children");
+        const allLines = node.querySelectorAll(":scope > .json-line");
+        const lastLine = allLines.length > 1 ? allLines[allLines.length - 1] : null;
         if (!bracketSpan) continue;
         const br = bracketSpan.getBoundingClientRect();
-        const lr = first.getBoundingClientRect();
-        const offset = br.left - lr.left;
-        last.style.paddingLeft = offset + "px";
+        const lr = firstLine.getBoundingClientRect();
+        const off = br.left - lr.left;
+        if (children) children.style.marginLeft = (off + ch4) + "px";
+        if (lastLine && lastLine !== firstLine && lastLine.style.display !== "none") {
+            lastLine.style.paddingLeft = off + "px";
+        }
     }
 }
 
