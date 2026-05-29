@@ -40,7 +40,7 @@ public:
             if (closeRequested && !forceClosing) {
                 closeRequested = false;
                 char result[8] = {0};
-                bool ok = win.script("modified ? 1 : 0", 3000, result, sizeof(result));
+                bool ok = win.script("modified ? 1 : 0", 120000, result, sizeof(result));
                 bool hasChanges = ok && strcmp(result, "1") == 0;
                 if (!ok || hasChanges) {
                     int ret = MessageBoxA(NULL,
