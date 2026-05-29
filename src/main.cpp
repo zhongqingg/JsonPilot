@@ -204,6 +204,15 @@ private:
                 pDlg->SetFileTypes(2, fileTypes);
                 pDlg->SetDefaultExtension(L"json");
                 pDlg->SetTitle(L"Save JSON File");
+                if (!rootDir.empty()) {
+                    std::wstring wRoot = fs::path(rootDir).wstring();
+                    IShellItem* pFolder = NULL;
+                    HRESULT hr2 = SHCreateItemFromParsingName(wRoot.c_str(), NULL, IID_PPV_ARGS(&pFolder));
+                    if (SUCCEEDED(hr2) && pFolder) {
+                        pDlg->SetFolder(pFolder);
+                        pFolder->Release();
+                    }
+                }
                 hr = pDlg->Show(NULL);
                 if (SUCCEEDED(hr)) {
                     IShellItem* pItem = NULL;
