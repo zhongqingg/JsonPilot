@@ -537,7 +537,7 @@ function collapseAll() {
                 } catch(e) { bracket.textContent = "{...}"; }
             }
         }
-        if (last) last.style.display = "none";
+        if (last && last !== first) last.style.display = "none";
     });
 }
 
