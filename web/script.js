@@ -742,11 +742,15 @@ function handleContextMenu(action, state) {
         case "delete":
             if (state.path.length > 0) {
                 showConfirm("Delete this node?", () => {
-                    const expandedState = getExpandedState();
-                    removeValueByPath(jsonData, state.path);
-                    markModified();
-                    rerenderJson();
-                    restoreExpandedState(expandedState);
+                    try {
+                        const expandedState = getExpandedState();
+                        removeValueByPath(jsonData, state.path);
+                        markModified();
+                        rerenderJson();
+                        restoreExpandedState(expandedState);
+                    } catch(e) {
+                        console.error("Delete callback error:", e);
+                    }
                 });
             }
             break;
