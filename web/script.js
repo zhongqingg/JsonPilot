@@ -5,8 +5,10 @@ let confirmCallback = null;
 
 async function init() {
     await loadFileTree();
+    await applyConfigTheme();
 
     document.getElementById("btnRefresh").addEventListener("click", loadFileTree);
+    document.getElementById("btnTheme").addEventListener("click", toggleTheme);
     document.getElementById("btnExpandAll").addEventListener("click", expandAll);
     document.getElementById("btnCollapseAll").addEventListener("click", collapseAll);
     document.getElementById("btnSave").addEventListener("click", saveFile);
@@ -60,6 +62,30 @@ async function init() {
             e.returnValue = "";
         }
     });
+}
+
+async function applyConfigTheme() {
+    try {
+        const configStr = await get_config();
+        const config = JSON.parse(configStr);
+        const theme = config.theme || "dark";
+        document.documentElement.dataset.theme = theme;
+        updateThemeButton(theme);
+    } catch (e) {
+        document.documentElement.dataset.theme = "dark";
+        updateThemeButton("dark");
+    }
+}
+
+function toggleTheme() {
+    const current = document.documentElement.dataset.theme;
+    const next = current === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    updateThemeButton(next);
+}
+
+function updateThemeButton(theme) {
+    document.getElementById("btnTheme").textContent = theme === "dark" ? "☀️" : "🌙";
 }
 
 async function loadFileTree() {

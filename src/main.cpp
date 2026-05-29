@@ -36,6 +36,7 @@ public:
 private:
     webui::window win;
     std::string rootDir;
+    std::string theme = "dark";
     std::string configPath;
     std::vector<std::pair<std::string, std::string>> jsonFiles;
 
@@ -90,6 +91,8 @@ private:
                         trim(val);
                         if (key == "root_dir") {
                             rootDir = val;
+                        } else if (key == "theme") {
+                            if (val == "light" || val == "dark") theme = val;
                         }
                     }
                 }
@@ -188,6 +191,7 @@ private:
     void bindGetConfig(webui::window::event* e) {
         json result;
         result["root_dir"] = rootDir;
+        result["theme"] = theme;
         result["success"] = true;
         e->return_string(result.dump());
     }
