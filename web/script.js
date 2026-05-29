@@ -147,6 +147,7 @@ function updateUI() {
     treeContainer.innerHTML = "";
     treeContainer.appendChild(renderValue(jsonData, [], undefined, false, -1));
     expandAll();
+    requestAnimationFrame(alignCloseBrackets);
 }
 
 function getValueByPath(data, path) {
@@ -239,6 +240,7 @@ function restoreExpandedState(state) {
             if (last) last.style.display = "none";
         }
     });
+    requestAnimationFrame(alignCloseBrackets);
 }
 
 function renderValue(val, path, key, isArrayElement, index) {
@@ -359,7 +361,10 @@ function toggleNode(container) {
             const val = getValueByPath(jsonData, JSON.parse(container.dataset.path));
             bracket.textContent = Array.isArray(val) ? "[" : "{";
         }
-        if (last) last.style.display = "";
+        if (last) {
+            last.style.display = "";
+            requestAnimationFrame(alignCloseBrackets);
+        }
     }
 }
 
@@ -520,6 +525,7 @@ function expandAll() {
         }
         if (last) last.style.display = "";
     });
+    requestAnimationFrame(alignCloseBrackets);
 }
 
 function collapseAll() {
@@ -550,6 +556,29 @@ function rerenderJson() {
     const treeContainer = document.getElementById("json-tree");
     treeContainer.innerHTML = "";
     treeContainer.appendChild(renderValue(jsonData, [], undefined, false, -1));
+    requestAnimationFrame(alignCloseBrackets);
+}
+
+function alignCloseBrackets() {
+    const nodes = document.querySelectorAll("#json-tree .json-node");
+    for (const node of nodes) {
+        const pathStr = node.dataset.path;
+        if (!pathStr) continue;
+        try {
+            const val = JSON.parse(pathStr);
+        } catch(e) { continue; }
+        const lines = node.querySelectorAll(":scope > .json-line");
+        if (lines.length < 2) continue;
+        const first = lines[0];
+        const last = lines[lines.length - 1];
+        if (!first || !last || last.style.display === "none") continue;
+        const bracketSpan = first.querySelector(".json-bracket");
+        if (!bracketSpan) continue;
+        const br = bracketSpan.getBoundingClientRect();
+        const lr = first.getBoundingClientRect();
+        const offset = br.left - lr.left;
+        last.style.paddingLeft = offset + "px";
+    }
 }
 
 function markModified() {
