@@ -35,20 +35,14 @@ if(MSVC)
     )
 endif()
 
-# Copy web folder, config.txt, and test data to build output directory
+# Copy web folder to build output directory
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/web DESTINATION ${CMAKE_BINARY_DIR})
 
 add_custom_command(TARGET jsoneditor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_CURRENT_SOURCE_DIR}/web"
         "$<TARGET_FILE_DIR:jsoneditor>/web"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/config.txt"
-        "$<TARGET_FILE_DIR:jsoneditor>/config.txt"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/data"
-        "$<TARGET_FILE_DIR:jsoneditor>/data"
-    COMMENT "Copy runtime files to output directory"
+    COMMENT "Copy web files to output directory"
 )
 
 message(STATUS "Web folder: ${CMAKE_CURRENT_SOURCE_DIR}/web")

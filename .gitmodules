@@ -1,0 +1,6 @@
+[submodule "thirdparty/webui"]
+	path = thirdparty/webui
+	url = https://github.com/webui-dev/webui.git
+[submodule "thirdparty/nlohmannjson"]
+	path = thirdparty/nlohmannjson
+	url = https://github.com/nlohmann/json.git
