@@ -98,8 +98,8 @@ private:
 
     void setWindowIcon() {
         HMODULE hInst = GetModuleHandleA(NULL);
-        HANDLE hIcon = LoadImageA(hInst, "IDI_ICON1", IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR);
-        HANDLE hIconSmall = LoadImageA(hInst, "IDI_ICON1", IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
+        HICON hIcon = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR);
+        HICON hIconSmall = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
         HWND hwnd = (HWND)win.win32_get_hwnd();
         if (hwnd && hIcon) {
             SendMessageA(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
