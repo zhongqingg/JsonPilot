@@ -282,6 +282,19 @@ body {
 #toolbar-actions {
     display: flex;
     gap: 4px;
+    align-items: center;
+}
+
+#toolbar-actions .toolbar-separator {
+    width: 1px;
+    height: 20px;
+    background: var(--border-color);
+    margin: 0 4px;
+}
+
+#btnUndo, #btnRedo {
+    font-size: 14px;
+    padding: 4px 8px;
 }
 
 #toolbar button {

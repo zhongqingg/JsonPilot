@@ -4,6 +4,63 @@ let modified = false;
 let confirmCallback = null;
 let diffData = { modified: {}, added: {}, deleted: {} };
 
+const undoStack = [];
+const redoStack = [];
+const maxUndoDepth = 50;
+let undoGrouping = false;
+let undoGroupTimer = null;
+
+function pushSnapshot() {
+    undoStack.push({
+        data: JSON.parse(JSON.stringify(jsonData)),
+        diff: JSON.parse(JSON.stringify(diffData)),
+        modified: modified
+    });
+    if (undoStack.length > maxUndoDepth) undoStack.shift();
+    redoStack.length = 0;
+}
+
+function undo() {
+    if (undoStack.length === 0) return;
+    redoStack.push({
+        data: JSON.parse(JSON.stringify(jsonData)),
+        diff: JSON.parse(JSON.stringify(diffData)),
+        modified: modified
+    });
+    const snap = undoStack.pop();
+    jsonData = snap.data;
+    diffData = snap.diff;
+    modified = snap.modified;
+    if (undoGroupTimer) { clearTimeout(undoGroupTimer); undoGroupTimer = null; }
+    undoGrouping = false;
+    refreshAfterUndoRedo();
+}
+
+function redo() {
+    if (redoStack.length === 0) return;
+    undoStack.push({
+        data: JSON.parse(JSON.stringify(jsonData)),
+        diff: JSON.parse(JSON.stringify(diffData)),
+        modified: modified
+    });
+    const snap = redoStack.pop();
+    jsonData = snap.data;
+    diffData = snap.diff;
+    modified = snap.modified;
+    if (undoGroupTimer) { clearTimeout(undoGroupTimer); undoGroupTimer = null; }
+    undoGrouping = false;
+    refreshAfterUndoRedo();
+}
+
+function refreshAfterUndoRedo() {
+    document.getElementById("file-path-display").textContent = currentFilePath
+        ? currentFilePath + (modified ? " (modified)" : "")
+        : "No file selected";
+    document.getElementById("btnSave").disabled = !modified || !currentFilePath;
+    rerenderJson();
+    expandAll();
+}
+
 function recordChange(type, path, details) {
     const key = JSON.stringify(path);
     if (type === 'modified') diffData.modified[key] = details;
@@ -140,6 +197,9 @@ async function init() {
 
     document.addEventListener("click", hideContextMenu);
     document.addEventListener("contextmenu", (e) => e.preventDefault());
+    document.getElementById("btnUndo").addEventListener("click", undo);
+    document.getElementById("btnRedo").addEventListener("click", redo);
+
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
             if (!document.getElementById("add-dialog").classList.contains("hidden")) {
@@ -149,6 +209,14 @@ async function init() {
             if (!document.getElementById("context-menu").classList.contains("hidden")) {
                 hideContextMenu();
             }
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+            e.preventDefault();
+            undo();
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === "y") {
+            e.preventDefault();
+            redo();
         }
     });
 
@@ -273,6 +341,8 @@ async function openFile(relPath, el) {
         currentFilePath = relPath;
         modified = false;
         clearDiff();
+        undoStack.length = 0;
+        redoStack.length = 0;
         updateUI();
     } catch (err) {
         showError("Error loading file: " + err.message);
@@ -594,6 +664,7 @@ function startEditKey(span, oldKey, path) {
             if (newKey && newKey !== oldKey) {
                 const parent = getValueByPath(jsonData, path.slice(0, -1));
                 if (parent && typeof parent === "object" && !Array.isArray(parent)) {
+                    pushSnapshot();
                     const newPath = [...path.slice(0, -1), newKey];
                     recordChange('modified', newPath, { oldVal: parent[oldKey], newVal: parent[oldKey], oldKey });
                     parent[newKey] = parent[oldKey];
@@ -644,6 +715,7 @@ function startEditValue(span, oldVal, path) {
         else if (raw === "false") newVal = false;
         else if (!isNaN(raw) && raw.trim() !== "") newVal = Number(raw);
         else newVal = raw;
+        pushSnapshot();
         recordChange('modified', path, { oldVal, newVal });
         setValueByPath(jsonData, path, newVal);
         markModified();
@@ -774,6 +846,7 @@ function doAddChild() {
         }
     }
     errorDiv.classList.add("hidden");
+    pushSnapshot();
     const expandedState = getExpandedState();
     const parent = path.length === 0 ? jsonData : getValueByPath(jsonData, path);
     let addedPath;
@@ -881,6 +954,7 @@ function handleContextMenu(action, state) {
         }
         case "duplicate":
             if (state.path.length > 0) {
+                pushSnapshot();
                 const expandedState = getExpandedState();
                 const newPath = duplicateValueByPath(jsonData, state.path);
                 if (newPath) recordChange('added', newPath, { value: getValueByPath(jsonData, newPath) });
@@ -893,6 +967,7 @@ function handleContextMenu(action, state) {
             if (state.path.length > 0) {
                 showConfirm("Delete this node?", () => {
                     try {
+                        pushSnapshot();
                         const expandedState = getExpandedState();
                         const parentPath = state.path.slice(0, -1);
                         const parent = state.path.length === 1 ? jsonData : getValueByPath(jsonData, parentPath);
