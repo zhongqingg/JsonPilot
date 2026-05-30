@@ -185,8 +185,8 @@ function findNodeByPath(pathStr) {
 }
 
 function clearSearchDecorations() {
-    document.querySelectorAll('.search-match, .search-match-active, .replace-preview').forEach(el => {
-        el.classList.remove('search-match', 'search-match-active', 'replace-preview');
+    document.querySelectorAll('.json-key[data-path], .json-value[data-path]').forEach(el => {
+        restoreSearchTarget(el);
     });
 }
 
@@ -202,6 +202,97 @@ function clearSearchHighlights() {
     document.getElementById('replace-with-input').value = '';
     document.getElementById('replace-with-input').disabled = true;
     document.getElementById('btnReplaceConfirm').disabled = true;
+    replaceMatches = [];
+}
+
+function appendTextWithMatches(parent, text, query, matchClass, replacement) {
+    if (!query) {
+        parent.appendChild(document.createTextNode(text));
+        return 0;
+    }
+    const lowerText = text.toLowerCase();
+    const lowerQuery = query.toLowerCase();
+    let cursor = 0;
+    let count = 0;
+    while (cursor < text.length) {
+        const idx = lowerText.indexOf(lowerQuery, cursor);
+        if (idx < 0) break;
+        if (idx > cursor) {
+            parent.appendChild(document.createTextNode(text.slice(cursor, idx)));
+        }
+        const mark = document.createElement("span");
+        mark.className = matchClass;
+        mark.textContent = replacement !== undefined ? replacement : text.slice(idx, idx + query.length);
+        parent.appendChild(mark);
+        cursor = idx + query.length;
+        count++;
+    }
+    if (cursor < text.length) {
+        parent.appendChild(document.createTextNode(text.slice(cursor)));
+    }
+    return count;
+}
+
+function getTargetElement(match) {
+    const node = findNodeByPath(JSON.stringify(match.path));
+    if (!node) return null;
+    const line = node.querySelector(':scope > .json-line');
+    if (!line) return null;
+    return match.isKey
+        ? line.querySelector(':scope > .json-key[data-path]')
+        : line.querySelector(':scope > .json-value[data-path]');
+}
+
+function restoreSearchTarget(el) {
+    if (!el || !el.dataset.rawText) return;
+    const text = el.dataset.rawText;
+    const isKey = el.dataset.targetType === "key";
+    const isString = el.dataset.valueType === "string";
+    el.innerHTML = "";
+    if (isKey) {
+        appendQuote(el);
+        el.appendChild(document.createTextNode(text));
+        appendQuote(el);
+        appendColon(el);
+    } else if (isString) {
+        appendQuote(el);
+        el.appendChild(document.createTextNode(text));
+        appendQuote(el);
+    } else {
+        el.appendChild(document.createTextNode(text));
+    }
+}
+
+function appendQuote(parent) {
+    const quote = document.createElement("span");
+    quote.style.color = "#888";
+    quote.textContent = '"';
+    parent.appendChild(quote);
+}
+
+function appendColon(parent) {
+    const colon = document.createElement("span");
+    colon.className = "json-colon";
+    colon.textContent = ": ";
+    parent.appendChild(colon);
+}
+
+function renderDecoratedTarget(match, query, cls, replacement) {
+    const el = getTargetElement(match);
+    if (!el || !el.dataset.rawText) return false;
+    const text = el.dataset.rawText;
+    const isKey = el.dataset.targetType === "key";
+    const isString = el.dataset.valueType === "string";
+    el.innerHTML = "";
+    if (isKey) appendQuote(el);
+    if (isString) appendQuote(el);
+    const count = appendTextWithMatches(el, text, query, cls, replacement);
+    if (isKey) {
+        appendQuote(el);
+        appendColon(el);
+    }
+    if (isString) appendQuote(el);
+    return count > 0;
 }
 
 function gatherSearchTargets(data, path, scopeRoot) {
@@ -236,12 +327,8 @@ function highlightMatches() {
     clearSearchDecorations();
     for (let i = 0; i < searchMatches.length; i++) {
         const m = searchMatches[i];
-        const node = findNodeByPath(JSON.stringify(m.path));
-        if (!node) continue;
-        const line = node.querySelector(':scope > .json-line');
-        if (!line) continue;
         const cls = (i === searchCurrentIdx) ? 'search-match-active' : 'search-match';
-        line.classList.add(cls);
+        renderDecoratedTarget(m, searchQuery, cls);
     }
     if (searchCurrentIdx >= 0 && searchCurrentIdx < searchMatches.length) {
         const m = searchMatches[searchCurrentIdx];
@@ -326,6 +413,7 @@ function showReplaceBar(scope) {
     document.getElementById('replace-find-input').value = '';
     document.getElementById('replace-with-input').value = '';
     document.getElementById('replace-with-input').disabled = true;
+    document.getElementById('replace-with-input').dataset.touched = "false";
     document.getElementById('btnReplaceConfirm').disabled = true;
     document.getElementById('replace-count').textContent = '';
     document.getElementById('replace-find-input').focus();
@@ -372,15 +460,16 @@ function performReplaceFind() {
     }
     replaceMatches = matches;
     for (const m of matches) {
-        const node = findNodeByPath(JSON.stringify(m.path));
-        if (!node) continue;
-        const line = node.querySelector(':scope > .json-line');
-        if (line) line.classList.add('search-match');
+        renderDecoratedTarget(m, query, 'search-match');
     }
     if (matches.length > 0) {
         withInput.disabled = false;
         countEl.textContent = matches.length + ' match' + (matches.length > 1 ? 'es' : '');
-        updateReplacePreview();
+        if (withInput.dataset.touched === "true") {
+            updateReplacePreview();
+        } else {
+            document.getElementById('btnReplaceConfirm').disabled = true;
+        }
     } else {
         withInput.disabled = true;
         document.getElementById('btnReplaceConfirm').disabled = true;
@@ -390,9 +479,18 @@ function performReplaceFind() {
 
 function updateReplacePreview() {
     const findText = document.getElementById('replace-find-input').value;
-    const replaceText = document.getElementById('replace-with-input').value;
-    document.querySelectorAll('.replace-preview').forEach(el => el.classList.remove('replace-preview'));
+    const replaceInput = document.getElementById('replace-with-input');
+    const replaceText = replaceInput.value;
+    replaceInput.dataset.touched = "true";
+    clearSearchDecorations();
     if (!findText || replaceMatches.length === 0) {
+        document.getElementById('btnReplaceConfirm').disabled = true;
+        return;
+    }
+    if (replaceText === "") {
+        for (const m of replaceMatches) {
+            renderDecoratedTarget(m, findText, 'search-match');
+        }
         document.getElementById('btnReplaceConfirm').disabled = true;
         return;
     }
@@ -402,12 +500,10 @@ function updateReplacePreview() {
         if (typeof currentText !== 'string') continue;
         const newText = currentText.split(findText).join(replaceText);
         if (newText !== currentText) {
-            const node = findNodeByPath(JSON.stringify(m.path));
-            if (node) {
-                const line = node.querySelector(':scope > .json-line');
-                if (line) line.classList.add('replace-preview');
-            }
+            renderDecoratedTarget(m, findText, 'replace-preview', replaceText);
             changed++;
+        } else {
+            renderDecoratedTarget(m, findText, 'search-match');
         }
     }
     document.getElementById('btnReplaceConfirm').disabled = (changed === 0);
@@ -505,7 +601,7 @@ async function init() {
     document.getElementById("btnUndo").addEventListener("click", undo);
     document.getElementById("btnRedo").addEventListener("click", redo);
     document.getElementById("btnSearch").addEventListener("click", toggleSearch);
-    document.getElementById("btnReplace").addEventListener("click", () => showReplaceBar({ type: 'root' }));
+    setupDragAndDrop();
 
     document.getElementById("search-input").addEventListener("input", (e) => {
         performSearch(e.target.value);
@@ -703,12 +799,54 @@ function renderFileTree(node, container, basePath, parentItem) {
     }
 }
 
+function resetEditorState(data, path, activeItem) {
+    jsonData = data;
+    currentFilePath = path;
+    modified = false;
+    clearDiff();
+    undoStack.length = 0;
+    redoStack.length = 0;
+    clearSearchHighlights();
+    document.getElementById('search-bar').classList.add('hidden');
+    document.getElementById('replace-bar').classList.add('hidden');
+    setActiveFileItem(activeItem || null);
+    updateUI();
+}
+
+function canDiscardCurrentChanges() {
+    return !modified || window.confirm("You have unsaved changes. Load a new file without saving?");
+}
+
+function setupDragAndDrop() {
+    window.addEventListener("dragover", (e) => {
+        e.preventDefault();
+    });
+    window.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!file) return;
+        if (!file.name.toLowerCase().endsWith(".json")) {
+            showError("Please drop a .json file.");
+            return;
+        }
+        if (!canDiscardCurrentChanges()) return;
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            resetEditorState(data, file.name, null);
+        } catch (err) {
+            showError("Error loading dropped file: " + err.message);
+        }
+    });
+}
+
 function setActiveFileItem(el) {
     document.querySelectorAll(".file-tree-item.active").forEach(e => e.classList.remove("active"));
     if (el) el.classList.add("active");
 }
 
 async function openFile(relPath, el) {
+    if (!canDiscardCurrentChanges()) return;
     setActiveFileItem(el);
     try {
         const resultStr = await load_file(relPath);
@@ -717,16 +855,7 @@ async function openFile(relPath, el) {
             showError(result.error || "Failed to load file");
             return;
         }
-        jsonData = result.data;
-        currentFilePath = relPath;
-        modified = false;
-        clearDiff();
-        undoStack.length = 0;
-        redoStack.length = 0;
-        clearSearchHighlights();
-        document.getElementById('search-bar').classList.add('hidden');
-        document.getElementById('replace-bar').classList.add('hidden');
-        updateUI();
+        resetEditorState(result.data, relPath, el);
     } catch (err) {
         showError("Error loading file: " + err.message);
     }
@@ -976,17 +1105,13 @@ function makeKeySpan(key, isArrayElement, index, path) {
         span.appendChild(idx);
         span.appendChild(document.createTextNode(": "));
     } else {
-        const q1 = document.createElement("span");
-        q1.style.color = "#888"; q1.textContent = '"';
-        span.appendChild(q1);
+        span.dataset.path = JSON.stringify(path);
+        span.dataset.rawText = String(key);
+        span.dataset.targetType = "key";
+        appendQuote(span);
         span.appendChild(document.createTextNode(key));
-        const q2 = document.createElement("span");
-        q2.style.color = "#888"; q2.textContent = '"';
-        span.appendChild(q2);
-        const colon = document.createElement("span");
-        colon.className = "json-colon";
-        colon.textContent = ": ";
-        span.appendChild(colon);
+        appendQuote(span);
+        appendColon(span);
     }
     span.addEventListener("dblclick", (e) => {
         e.stopPropagation();
@@ -999,27 +1124,32 @@ function makeKeySpan(key, isArrayElement, index, path) {
 function makeValueSpan(val, path) {
     const span = document.createElement("span");
     span.className = "json-value";
+    span.dataset.path = JSON.stringify(path);
+    span.dataset.rawText = val === null ? "null" : String(val);
+    span.dataset.targetType = "value";
     if (val === null) {
         span.textContent = "null";
         span.classList.add("type-null");
+        span.dataset.valueType = "null";
     } else if (typeof val === "string") {
-        const q1 = document.createElement("span");
-        q1.style.color = "#888"; q1.textContent = '"';
-        span.appendChild(q1);
+        span.dataset.rawText = val;
+        span.dataset.valueType = "string";
+        appendQuote(span);
         span.appendChild(document.createTextNode(val));
-        const q2 = document.createElement("span");
-        q2.style.color = "#888"; q2.textContent = '"';
-        span.appendChild(q2);
+        appendQuote(span);
         span.classList.add("type-string");
     } else if (typeof val === "number") {
         span.textContent = String(val);
         span.classList.add("type-number");
+        span.dataset.valueType = "number";
     } else if (typeof val === "boolean") {
         span.textContent = val ? "true" : "false";
         span.classList.add("type-boolean");
+        span.dataset.valueType = "boolean";
     } else {
         span.textContent = String(val);
         span.classList.add("type-undefined");
+        span.dataset.valueType = "undefined";
     }
     span.addEventListener("dblclick", (e) => {
         e.stopPropagation();

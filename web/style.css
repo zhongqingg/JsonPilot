@@ -250,6 +250,10 @@ body {
     text-overflow: ellipsis;
 }
 
+.file-tree-children {
+    margin-left: 16px;
+}
+
 #main-content {
     flex: 1;
     display: flex;
@@ -292,16 +296,13 @@ body {
     margin: 0 4px;
 }
 
-#btnUndo, #btnRedo {
-    font-size: 14px;
-    padding: 4px 8px;
-}
-
 #toolbar button {
     background: var(--btn-bg);
     border: 1px solid var(--btn-border);
     color: var(--text-primary);
-    padding: 4px 12px;
+    min-width: 68px;
+    height: 28px;
+    padding: 4px 10px;
     border-radius: 3px;
     cursor: pointer;
     font-size: 12px;
@@ -333,11 +334,6 @@ body {
 
 #toolbar button#btnSaveAs:hover:not(:disabled) {
     background: var(--btn-saveas-hover);
-}
-
-#btnSearch {
-    font-size: 15px;
-    padding: 4px 8px;
 }
 
 /* Search Bar */
@@ -422,18 +418,21 @@ body {
 
 /* Search/Replace Match Highlights */
 .search-match {
-    background: rgba(40, 160, 60, 0.25) !important;
-    border-left: 3px solid rgba(40, 160, 60, 0.6) !important;
+    background: rgba(40, 160, 60, 0.35);
+    border-radius: 2px;
+    color: inherit;
 }
 
 .search-match-active {
-    background: rgba(40, 160, 60, 0.45) !important;
-    border-left: 3px solid #28a03c !important;
+    background: rgba(40, 160, 60, 0.65);
+    border-radius: 2px;
+    color: inherit;
 }
 
 .replace-preview {
-    background: rgba(220, 140, 20, 0.25) !important;
-    border-left: 3px solid rgba(220, 140, 20, 0.6) !important;
+    background: rgba(220, 140, 20, 0.45);
+    border-radius: 2px;
+    color: inherit;
 }
 
 #editor-area {
