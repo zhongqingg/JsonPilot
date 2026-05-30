@@ -10,6 +10,13 @@ const maxUndoDepth = 50;
 let undoGrouping = false;
 let undoGroupTimer = null;
 
+let lastActivePath = null;
+let searchActive = false;
+let searchMatches = [];
+let searchCurrentIdx = -1;
+let searchQuery = '';
+let replaceScope = null;
+
 function pushSnapshot() {
     undoStack.push({
         data: JSON.parse(JSON.stringify(jsonData)),
@@ -155,6 +162,304 @@ function hideDeletedTooltip() {
     document.querySelectorAll('.deleted-tooltip').forEach(el => el.remove());
 }
 
+/* ── Search/Replace ── */
+
+function pathsEqual(a, b) {
+    return Array.isArray(a) && Array.isArray(b)
+        && a.length === b.length
+        && a.every((part, i) => part === b[i]);
+}
+
+function pathStartsWith(path, prefix) {
+    return Array.isArray(path) && Array.isArray(prefix)
+        && path.length >= prefix.length
+        && prefix.every((part, i) => path[i] === part);
+}
+
+function findNodeByPath(pathStr) {
+    const nodes = document.querySelectorAll('.json-node');
+    for (const node of nodes) {
+        if (node.dataset.path === pathStr) return node;
+    }
+    return null;
+}
+
+function clearSearchDecorations() {
+    document.querySelectorAll('.search-match, .search-match-active, .replace-preview').forEach(el => {
+        el.classList.remove('search-match', 'search-match-active', 'replace-preview');
+    });
+}
+
+function clearSearchHighlights() {
+    searchActive = false;
+    searchMatches = [];
+    searchCurrentIdx = -1;
+    searchQuery = '';
+    clearSearchDecorations();
+    document.getElementById('search-count').textContent = '';
+    document.getElementById('replace-count').textContent = '';
+    document.getElementById('replace-find-input').value = '';
+    document.getElementById('replace-with-input').value = '';
+    document.getElementById('replace-with-input').disabled = true;
+    document.getElementById('btnReplaceConfirm').disabled = true;
+}
+
+function gatherSearchTargets(data, path, scopeRoot) {
+    const results = [];
+    if (data === null || data === undefined) return results;
+    if (typeof data !== 'object') {
+        const repr = typeof data === 'string' ? data : String(data);
+        results.push({ path, text: repr, isKey: false });
+    } else {
+        const keys = Array.isArray(data) ? data.map((_, i) => i) : Object.keys(data);
+        const isArray = Array.isArray(data);
+        for (const key of keys) {
+            const val = data[key];
+            const childPath = [...path, key];
+            if (!isArray) {
+                results.push({ path: childPath, text: String(key), isKey: true });
+            }
+            if (val !== null && typeof val === 'object') {
+                results.push(...gatherSearchTargets(val, childPath, scopeRoot));
+            } else if (typeof val === 'string') {
+                results.push({ path: childPath, text: val, isKey: false });
+            } else {
+                const repr = val === null ? 'null' : String(val);
+                results.push({ path: childPath, text: repr, isKey: false });
+            }
+        }
+    }
+    return results;
+}
+
+function highlightMatches() {
+    clearSearchDecorations();
+    for (let i = 0; i < searchMatches.length; i++) {
+        const m = searchMatches[i];
+        const node = findNodeByPath(JSON.stringify(m.path));
+        if (!node) continue;
+        const line = node.querySelector(':scope > .json-line');
+        if (!line) continue;
+        const cls = (i === searchCurrentIdx) ? 'search-match-active' : 'search-match';
+        line.classList.add(cls);
+    }
+    if (searchCurrentIdx >= 0 && searchCurrentIdx < searchMatches.length) {
+        const m = searchMatches[searchCurrentIdx];
+        const node = findNodeByPath(JSON.stringify(m.path));
+        if (node) node.scrollIntoView({ block: 'center' });
+    }
+    const cnt = document.getElementById('search-count');
+    if (searchMatches.length > 0) {
+        cnt.textContent = (searchCurrentIdx + 1) + '/' + searchMatches.length;
+    } else {
+        cnt.textContent = '0/0';
+    }
+}
+
+function performSearch(query) {
+    clearSearchHighlights();
+    if (!query || !jsonData) {
+        document.getElementById('search-count').textContent = '';
+        return;
+    }
+    searchActive = true;
+    searchQuery = query;
+    const q = query.toLowerCase();
+    const all = gatherSearchTargets(jsonData, [], null);
+    const matches = [];
+    for (const target of all) {
+        if (target.text.toLowerCase().includes(q)) {
+            matches.push(target);
+        }
+    }
+    if (matches.length === 0) {
+        document.getElementById('search-count').textContent = '0/0';
+        return;
+    }
+    searchMatches = matches;
+    if (lastActivePath) {
+        const lastStr = JSON.stringify(lastActivePath);
+        let best = 0;
+        for (let i = 0; i < matches.length; i++) {
+            const mStr = JSON.stringify(matches[i].path);
+            if (mStr >= lastStr) { best = i; break; }
+            best = i;
+        }
+        searchCurrentIdx = best;
+    } else {
+        searchCurrentIdx = 0;
+    }
+    highlightMatches();
+}
+
+function nextMatch() {
+    if (searchMatches.length === 0) return;
+    searchCurrentIdx = (searchCurrentIdx + 1) % searchMatches.length;
+    highlightMatches();
+}
+
+function prevMatch() {
+    if (searchMatches.length === 0) return;
+    searchCurrentIdx = (searchCurrentIdx - 1 + searchMatches.length) % searchMatches.length;
+    highlightMatches();
+}
+
+function toggleSearch() {
+    const bar = document.getElementById('search-bar');
+    if (bar.classList.contains('hidden')) {
+        bar.classList.remove('hidden');
+        document.getElementById('search-input').focus();
+    } else {
+        bar.classList.add('hidden');
+        document.getElementById('replace-bar').classList.add('hidden');
+        clearSearchHighlights();
+    }
+}
+
+/* ── Replace ── */
+
+function showReplaceBar(scope) {
+    replaceScope = scope;
+    document.getElementById('replace-bar').classList.remove('hidden');
+    document.getElementById('search-bar').classList.add('hidden');
+    clearSearchHighlights();
+    document.getElementById('replace-find-input').value = '';
+    document.getElementById('replace-with-input').value = '';
+    document.getElementById('replace-with-input').disabled = true;
+    document.getElementById('btnReplaceConfirm').disabled = true;
+    document.getElementById('replace-count').textContent = '';
+    document.getElementById('replace-find-input').focus();
+}
+
+let replaceMatches = [];
+
+function isInScope(path, scope) {
+    if (!scope) return true;
+    if (scope.type === 'root') return true;
+    if (scope.type === 'value') {
+        return pathsEqual(path, scope.path);
+    }
+    if (scope.type === 'node') {
+        return pathStartsWith(path, scope.path);
+    }
+    return true;
+}
+
+function performReplaceFind() {
+    const findInput = document.getElementById('replace-find-input');
+    const withInput = document.getElementById('replace-with-input');
+    const countEl = document.getElementById('replace-count');
+    const query = findInput.value;
+    clearSearchDecorations();
+    if (!query) {
+        withInput.disabled = true;
+        document.getElementById('btnReplaceConfirm').disabled = true;
+        countEl.textContent = '';
+        replaceMatches = [];
+        return;
+    }
+    if (!jsonData) return;
+    const q = query.toLowerCase();
+    const all = gatherSearchTargets(jsonData, [], null);
+    const matches = [];
+    for (const target of all) {
+        if (isInScope(target.path, replaceScope)) {
+            if (target.text.toLowerCase().includes(q)) {
+                const cur = getValueByPath(jsonData, target.path);
+                if (target.isKey || typeof cur === 'string') matches.push(target);
+            }
+        }
+    }
+    replaceMatches = matches;
+    for (const m of matches) {
+        const node = findNodeByPath(JSON.stringify(m.path));
+        if (!node) continue;
+        const line = node.querySelector(':scope > .json-line');
+        if (line) line.classList.add('search-match');
+    }
+    if (matches.length > 0) {
+        withInput.disabled = false;
+        countEl.textContent = matches.length + ' match' + (matches.length > 1 ? 'es' : '');
+        updateReplacePreview();
+    } else {
+        withInput.disabled = true;
+        document.getElementById('btnReplaceConfirm').disabled = true;
+        countEl.textContent = '0 matches';
+    }
+}
+
+function updateReplacePreview() {
+    const findText = document.getElementById('replace-find-input').value;
+    const replaceText = document.getElementById('replace-with-input').value;
+    document.querySelectorAll('.replace-preview').forEach(el => el.classList.remove('replace-preview'));
+    if (!findText || replaceMatches.length === 0) {
+        document.getElementById('btnReplaceConfirm').disabled = true;
+        return;
+    }
+    let changed = 0;
+    for (const m of replaceMatches) {
+        const currentText = m.isKey ? String(m.path[m.path.length - 1]) : getValueByPath(jsonData, m.path);
+        if (typeof currentText !== 'string') continue;
+        const newText = currentText.split(findText).join(replaceText);
+        if (newText !== currentText) {
+            const node = findNodeByPath(JSON.stringify(m.path));
+            if (node) {
+                const line = node.querySelector(':scope > .json-line');
+                if (line) line.classList.add('replace-preview');
+            }
+            changed++;
+        }
+    }
+    document.getElementById('btnReplaceConfirm').disabled = (changed === 0);
+}
+
+function executeReplace() {
+    const findText = document.getElementById('replace-find-input').value;
+    const replaceText = document.getElementById('replace-with-input').value;
+    if (!findText || replaceMatches.length === 0) return;
+    const changes = [];
+    for (const m of replaceMatches) {
+        if (m.isKey) {
+            const oldKey = String(m.path[m.path.length - 1]);
+            const newKey = oldKey.split(findText).join(replaceText);
+            if (newKey !== oldKey) {
+                changes.push({ type: 'key', path: m.path, oldKey, newKey });
+            }
+            continue;
+        }
+        const oldVal = getValueByPath(jsonData, m.path);
+        if (typeof oldVal !== 'string') continue;
+        const newVal = oldVal.split(findText).join(replaceText);
+        if (newVal !== oldVal) {
+            changes.push({ type: 'value', path: m.path, oldVal, newVal });
+        }
+    }
+    if (changes.length === 0) return;
+    pushSnapshot();
+    for (const change of changes) {
+        if (change.type !== 'value') continue;
+        setValueByPath(jsonData, change.path, change.newVal);
+        recordChange('modified', change.path, { oldVal: change.oldVal, newVal: change.newVal });
+    }
+    for (const change of changes) {
+        if (change.type !== 'key') continue;
+        const parent = getValueByPath(jsonData, change.path.slice(0, -1));
+        if (!parent || typeof parent !== 'object' || Array.isArray(parent)) continue;
+        if (Object.prototype.hasOwnProperty.call(parent, change.newKey)) continue;
+        const oldVal = parent[change.oldKey];
+        parent[change.newKey] = oldVal;
+        delete parent[change.oldKey];
+        const newPath = [...change.path.slice(0, -1), change.newKey];
+        recordChange('modified', newPath, { oldVal, newVal: oldVal, oldKey: change.oldKey });
+    }
+    markModified();
+    document.getElementById('replace-bar').classList.add('hidden');
+    clearSearchHighlights();
+    const state = getExpandedState();
+    rerenderJson();
+    restoreExpandedState(state);
+}
+
 async function init() {
     await loadFileTree();
     await applyConfigTheme();
@@ -199,9 +504,54 @@ async function init() {
     document.addEventListener("contextmenu", (e) => e.preventDefault());
     document.getElementById("btnUndo").addEventListener("click", undo);
     document.getElementById("btnRedo").addEventListener("click", redo);
+    document.getElementById("btnSearch").addEventListener("click", toggleSearch);
+    document.getElementById("btnReplace").addEventListener("click", () => showReplaceBar({ type: 'root' }));
+
+    document.getElementById("search-input").addEventListener("input", (e) => {
+        performSearch(e.target.value);
+    });
+    document.getElementById("search-input").addEventListener("keyup", (e) => {
+        performSearch(e.target.value);
+    });
+    document.getElementById("search-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            if (e.shiftKey) prevMatch();
+            else nextMatch();
+        }
+        if (e.key === "Backspace" && !e.target.value) {
+            toggleSearch();
+        }
+    });
+    document.getElementById("search-prev").addEventListener("click", prevMatch);
+    document.getElementById("search-next").addEventListener("click", nextMatch);
+    document.getElementById("btnSearchClear").addEventListener("click", () => {
+        document.getElementById('search-input').value = '';
+        document.getElementById('search-bar').classList.add('hidden');
+        clearSearchHighlights();
+    });
+
+    document.getElementById("replace-find-input").addEventListener("input", performReplaceFind);
+    document.getElementById("replace-find-input").addEventListener("keyup", performReplaceFind);
+    document.getElementById("replace-with-input").addEventListener("input", updateReplacePreview);
+    document.getElementById("replace-with-input").addEventListener("keyup", updateReplacePreview);
+    document.getElementById("btnReplaceConfirm").addEventListener("click", executeReplace);
+    document.getElementById("btnReplaceCancel").addEventListener("click", () => {
+        document.getElementById('replace-bar').classList.add('hidden');
+        clearSearchHighlights();
+    });
 
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape") {
+            if (!document.getElementById("replace-bar").classList.contains("hidden")) {
+                document.getElementById('replace-bar').classList.add('hidden');
+                clearSearchHighlights();
+                return;
+            }
+            if (!document.getElementById("search-bar").classList.contains("hidden")) {
+                document.getElementById('search-bar').classList.add('hidden');
+                clearSearchHighlights();
+                return;
+            }
             if (!document.getElementById("add-dialog").classList.contains("hidden")) {
                 hideAddChildDialog();
                 return;
@@ -217,6 +567,36 @@ async function init() {
         if ((e.ctrlKey || e.metaKey) && e.key === "y") {
             e.preventDefault();
             redo();
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+            e.preventDefault();
+            toggleSearch();
+        }
+        if ((e.ctrlKey || e.metaKey) && e.key === "h") {
+            e.preventDefault();
+            showReplaceBar({ type: 'root' });
+        }
+        if (searchActive && !e.ctrlKey && !e.metaKey) {
+            const active = document.activeElement;
+            const isTyping = active && (
+                active.tagName === "INPUT" ||
+                active.tagName === "TEXTAREA" ||
+                active.isContentEditable
+            );
+            if (isTyping) return;
+            if (e.key === "n") {
+                e.preventDefault();
+                nextMatch();
+            }
+            if (e.key === "N") {
+                e.preventDefault();
+                prevMatch();
+            }
+            if (e.key === "Backspace") {
+                e.preventDefault();
+                document.getElementById('search-input').value = '';
+                clearSearchHighlights();
+            }
         }
     });
 
@@ -343,6 +723,9 @@ async function openFile(relPath, el) {
         clearDiff();
         undoStack.length = 0;
         redoStack.length = 0;
+        clearSearchHighlights();
+        document.getElementById('search-bar').classList.add('hidden');
+        document.getElementById('replace-bar').classList.add('hidden');
         updateUI();
     } catch (err) {
         showError("Error loading file: " + err.message);
@@ -479,6 +862,7 @@ function renderValue(val, path, key, isArrayElement, index) {
         const line = document.createElement("div");
         line.className = "json-line";
         line.dataset.path = JSON.stringify(path);
+        line.addEventListener("click", () => { lastActivePath = path; });
 
         const toggle = document.createElement("span");
         toggle.className = "json-toggle expanded";
@@ -532,6 +916,7 @@ function renderValue(val, path, key, isArrayElement, index) {
         const line = document.createElement("div");
         line.className = "json-line";
         line.dataset.path = JSON.stringify(path);
+        line.addEventListener("click", () => { lastActivePath = path; });
         const keySpan = makeKeySpan(key, isArrayElement, index, path);
         if (keySpan) line.appendChild(keySpan);
         const valueSpan = makeValueSpan(val, path);
@@ -914,10 +1299,23 @@ function setupContextMenu(container, path, key, isArrayElement, val) {
 }
 
 function showContextMenu(x, y, path, key, isArrayElement, val, isObject) {
+    lastActivePath = path;
     const menu = document.getElementById("context-menu");
-    menu.style.left = Math.min(x, window.innerWidth - 170) + "px";
-    menu.style.top = Math.min(y, window.innerHeight - 150) + "px";
     menu.classList.remove("hidden");
+    menu.style.left = "";
+    menu.style.top = "";
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    let left = Math.min(x, window.innerWidth - mw - 8);
+    let top = y;
+    if (top + mh > window.innerHeight - 8) {
+        top = Math.max(8, window.innerHeight - mh - 8);
+    }
+    if (top + mh > window.innerHeight - 8) {
+        top = Math.max(8, y - mh - 8);
+    }
+    menu.style.left = Math.max(8, left) + "px";
+    menu.style.top = Math.max(8, top) + "px";
     menu._state = { path, key, isArrayElement, val, isObject };
     const addItem = menu.querySelector('[data-action="add-child"]');
     if (addItem) addItem.style.display = isObject ? "" : "none";
@@ -994,6 +1392,20 @@ function handleContextMenu(action, state) {
                     }
                 });
             }
+            break;
+        case "replace-scope": {
+            lastActivePath = state.path;
+            let scope;
+            if (state.val !== null && typeof state.val === "object") {
+                scope = { type: 'node', path: state.path };
+            } else {
+                scope = { type: 'value', path: state.path };
+            }
+            showReplaceBar(scope);
+            break;
+        }
+        case "replace-global":
+            showReplaceBar({ type: 'root' });
             break;
     }
 }

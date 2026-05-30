@@ -335,6 +335,107 @@ body {
     background: var(--btn-saveas-hover);
 }
 
+#btnSearch {
+    font-size: 15px;
+    padding: 4px 8px;
+}
+
+/* Search Bar */
+.search-bar, .replace-bar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg-toolbar);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.search-bar {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+}
+
+.search-bar.hidden, .replace-bar.hidden {
+    display: none;
+}
+
+.search-label {
+    color: var(--text-muted);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.search-bar input[type="text"],
+.replace-bar input[type="text"] {
+    flex: 1;
+    padding: 4px 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    color: var(--text-primary);
+    border-radius: 3px;
+    font-size: 13px;
+    outline: none;
+    min-width: 0;
+}
+
+.search-bar input[type="text"]:focus,
+.replace-bar input[type="text"]:focus {
+    border-color: var(--border-focus);
+}
+
+.search-count {
+    color: var(--text-muted);
+    font-size: 11px;
+    white-space: nowrap;
+    min-width: 40px;
+    text-align: center;
+}
+
+.search-btn {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 2px 6px;
+    border-radius: 3px;
+}
+
+.search-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-color);
+}
+
+.replace-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.replace-row .btn-ok,
+.replace-row .btn-cancel {
+    padding: 4px 16px;
+    font-size: 12px;
+}
+
+/* Search/Replace Match Highlights */
+.search-match {
+    background: rgba(40, 160, 60, 0.25) !important;
+    border-left: 3px solid rgba(40, 160, 60, 0.6) !important;
+}
+
+.search-match-active {
+    background: rgba(40, 160, 60, 0.45) !important;
+    border-left: 3px solid #28a03c !important;
+}
+
+.replace-preview {
+    background: rgba(220, 140, 20, 0.25) !important;
+    border-left: 3px solid rgba(220, 140, 20, 0.6) !important;
+}
+
 #editor-area {
     flex: 1;
     overflow: auto;

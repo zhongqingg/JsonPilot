@@ -22,12 +22,37 @@
         <div id="toolbar">
             <span id="file-path-display"></span>
             <div id="toolbar-actions">
+                <button id="btnSearch" title="Search (Ctrl+F)">&#x1F50D;</button>
+                <button id="btnReplace" title="Replace (Ctrl+H)">&#x21C4;</button>
                 <button id="btnUndo" title="Undo (Ctrl+Z)">&#x2190;</button>
                 <button id="btnRedo" title="Redo (Ctrl+Y)">&#x2192;</button>
                 <button id="btnExpandAll">Expand All</button>
                 <button id="btnCollapseAll">Collapse All</button>
                 <button id="btnSave" disabled>Save</button>
                 <button id="btnSaveAs" disabled>Save As</button>
+            </div>
+        </div>
+        <div id="search-bar" class="search-bar hidden">
+            <span class="search-label">Find:</span>
+            <input type="text" id="search-input" placeholder="Search...">
+            <span class="search-count" id="search-count"></span>
+            <button id="search-prev" class="search-btn" title="Previous (Shift+Enter)">&#x25B2;</button>
+            <button id="search-next" class="search-btn" title="Next (Enter)">&#x25BC;</button>
+            <button id="btnSearchClear" class="search-btn" title="Clear (Backspace)">&#x2715;</button>
+        </div>
+        <div id="replace-bar" class="replace-bar hidden">
+            <div class="replace-row">
+                <span class="search-label">Find:</span>
+                <input type="text" id="replace-find-input" placeholder="Search...">
+                <span class="search-count" id="replace-count"></span>
+            </div>
+            <div class="replace-row">
+                <span class="search-label">Replace:</span>
+                <input type="text" id="replace-with-input" placeholder="Replace with..." disabled>
+            </div>
+            <div class="replace-row">
+                <button id="btnReplaceConfirm" class="btn-ok" disabled>Replace All</button>
+                <button id="btnReplaceCancel" class="btn-cancel">Cancel</button>
             </div>
         </div>
         <div id="editor-area">
@@ -45,6 +70,9 @@
     <div class="menu-separator"></div>
     <div class="menu-item" data-action="duplicate">Duplicate</div>
     <div class="menu-item" data-action="delete">Delete</div>
+    <div class="menu-separator"></div>
+    <div class="menu-item" data-action="replace-scope">Replace in Current Scope</div>
+    <div class="menu-item" data-action="replace-global">Replace Globally</div>
 </div>
 
 <div id="confirm-dialog" class="dialog-overlay hidden">
