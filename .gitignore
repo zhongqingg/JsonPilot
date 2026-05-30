@@ -13,3 +13,4 @@ deploy/
 tools/
 .cache/
 src/icodir/
+thirdparty/
