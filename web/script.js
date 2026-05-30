@@ -116,13 +116,6 @@ async function init() {
     });
     document.getElementById("confirm-cancel").addEventListener("click", hideConfirm);
 
-    window.addEventListener("beforeunload", (e) => {
-        if (modified) {
-            e.preventDefault();
-            e.returnValue = "";
-        }
-    });
-
     document.getElementById("save-as-ok").addEventListener("click", doSaveAs);
     document.getElementById("save-as-cancel").addEventListener("click", hideSaveAsDialog);
     document.getElementById("btnBrowse").addEventListener("click", onBrowseSaveAs);
@@ -159,12 +152,17 @@ async function init() {
         }
     });
 
-    window.addEventListener("beforeunload", (e) => {
+    window.onbeforeunload = (e) => {
         if (modified) {
             e.preventDefault();
             e.returnValue = "";
+            return "";
         }
-    });
+    };
+}
+
+function has_unsaved_changes() {
+    return modified ? 1 : 0;
 }
 
 async function applyConfigTheme() {

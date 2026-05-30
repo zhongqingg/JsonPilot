@@ -11,9 +11,15 @@ add_subdirectory(thirdparty/webui)
 set(WEB_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/web")
 add_definitions(-DWEB_SOURCE_DIR="${WEB_SOURCE_DIR}")
 
-add_executable(jsoneditor
-    src/main.cpp
-)
+if(WIN32)
+    add_executable(jsoneditor WIN32
+        src/main.cpp
+    )
+else()
+    add_executable(jsoneditor
+        src/main.cpp
+    )
+endif()
 
 target_include_directories(jsoneditor PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/nlohmannjson

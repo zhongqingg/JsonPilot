@@ -40,7 +40,7 @@ public:
             if (closeRequested && !forceClosing) {
                 closeRequested = false;
                 char result[8] = {0};
-                bool ok = win.script("modified ? 1 : 0", 120000, result, sizeof(result));
+                bool ok = win.script("has_unsaved_changes()", 120000, result, sizeof(result));
                 bool hasChanges = ok && strcmp(result, "1") == 0;
                 if (!ok || hasChanges) {
                     int ret = MessageBoxA(NULL,
@@ -48,10 +48,12 @@ public:
                         "Unsaved Changes", MB_YESNO | MB_ICONWARNING | MB_SYSTEMMODAL);
                     if (ret == IDYES) {
                         forceClosing = true;
+                        win.run("window.onbeforeunload = null;");
                         webui_exit();
                     }
                 } else {
                     forceClosing = true;
+                    win.run("window.onbeforeunload = null;");
                     webui_exit();
                 }
             }
@@ -400,7 +402,7 @@ int main() {
     return 0;
 }
 
-#if defined(_MSC_VER)
+#if defined(_WIN32)
 int APIENTRY WinMain(HINSTANCE hInst, HINSTANCE hInstPrev, PSTR cmdline, int cmdshow) {
     return main();
 }
