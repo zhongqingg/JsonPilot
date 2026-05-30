@@ -9,3 +9,7 @@ build/
 Thumbs.db
 data/
 config.txt
+deploy/
+tools/
+.cache/
+src/icodir/

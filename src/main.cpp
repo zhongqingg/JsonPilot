@@ -111,8 +111,12 @@ private:
         if (!hwnd) return;
 
         HMODULE hInst = GetModuleHandleA(NULL);
+
+        // LR_DEFAULTSIZE: Windows picks the size matching system DPI settings
+        // from the ICO's embedded resolutions. With a properly multi-resolution
+        // ICO (16..256), each DPI level finds an exact match with no scaling.
         HICON hIcon = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON,
-            GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0);
+            0, 0, LR_DEFAULTSIZE);
         HICON hIconSmall = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON,
             GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
 

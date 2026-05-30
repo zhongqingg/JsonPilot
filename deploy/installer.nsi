@@ -58,9 +58,8 @@ Section "MainSection" SEC01
     File "JsonPilot\web\icon.png"
     File "JsonPilot\web\icon.ico"
 
-    ; Data directory (sample)
-    SetOutPath "$INSTDIR\data"
-    File /nonfatal /r "JsonPilot\data\*.json"
+    ; Data directory (empty, for user JSON files)
+    CreateDirectory "$INSTDIR\data"
 SectionEnd
 
 Section -AdditionalIcons
@@ -74,12 +73,12 @@ Section -Post
     WriteUninstaller "$INSTDIR\uninst.exe"
     WriteRegStr HKLM "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\JsonPilot.exe"
     WriteRegStr HKLM "${PRODUCT_DIR_REGKEY}" "Path" "$INSTDIR"
-    WriteRegStr ${PRODUCT_UNINST_KEY} "DisplayName" "$(^Name)"
-    WriteRegStr ${PRODUCT_UNINST_KEY} "UninstallString" "$INSTDIR\uninst.exe"
-    WriteRegStr ${PRODUCT_UNINST_KEY} "DisplayIcon" "$INSTDIR\JsonPilot.exe"
-    WriteRegStr ${PRODUCT_UNINST_KEY} "DisplayVersion" "${PRODUCT_VERSION}"
-    WriteRegStr ${PRODUCT_UNINST_KEY} "URLInfoAbout" "${PRODUCT_WEB_SITE}"
-    WriteRegStr ${PRODUCT_UNINST_KEY} "Publisher" "${PRODUCT_PUBLISHER}"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayName" "${PRODUCT_NAME}"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\uninst.exe"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\JsonPilot.exe"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
+    WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "Publisher" "${PRODUCT_PUBLISHER}"
 SectionEnd
 
 Section Uninstall
@@ -87,14 +86,7 @@ Section Uninstall
     Delete "$INSTDIR\JsonPilot.exe"
     Delete "$INSTDIR\config.txt"
 
-    Delete "$INSTDIR\web\index.html"
-    Delete "$INSTDIR\web\script.js"
-    Delete "$INSTDIR\web\style.css"
-    Delete "$INSTDIR\web\icon.png"
-    Delete "$INSTDIR\web\icon.ico"
-    RMDir "$INSTDIR\web"
-
-    Delete "$INSTDIR\data\*.json"
+    RMDir /r "$INSTDIR\web"
     RMDir "$INSTDIR\data"
 
     Delete "$SMPROGRAMS\${PRODUCT_NAME}\${PRODUCT_NAME}.lnk"
@@ -104,7 +96,7 @@ Section Uninstall
 
     RMDir "$INSTDIR"
 
-    DeleteRegKey ${PRODUCT_UNINST_KEY}
+    DeleteRegKey HKLM "${PRODUCT_UNINST_KEY}"
     DeleteRegKey HKLM "${PRODUCT_DIR_REGKEY}"
 
     SetAutoClose true
