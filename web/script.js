@@ -557,7 +557,7 @@ function executeReplace() {
 }
 
 async function init() {
-    await loadFileTree();
+    await loadFileTree(true);
     await applyConfigTheme();
 
     document.getElementById("btnRefresh").addEventListener("click", loadFileTree);
@@ -733,13 +733,22 @@ function updateThemeButton(theme) {
     document.getElementById("btnTheme").textContent = theme === "dark" ? "☀️" : "🌙";
 }
 
-async function loadFileTree() {
+async function loadFileTree(retryOnEmpty, retryCount, maxRetries) {
+    if (maxRetries === undefined) maxRetries = retryOnEmpty ? 10 : 1;
+    if (retryCount === undefined) retryCount = 0;
     try {
         const treeStr = await get_file_tree();
         const tree = JSON.parse(treeStr);
         renderFileTree(tree, document.getElementById("file-tree"), "", null);
+        if (retryCount < maxRetries && Object.keys(tree).length === 0) {
+            console.log("File tree empty, retrying... (" + (retryCount + 1) + "/" + maxRetries + ")");
+            setTimeout(() => loadFileTree(true, retryCount + 1, maxRetries), 500);
+        }
     } catch (err) {
-        console.error("Failed to load file tree:", err);
+        console.error("Failed to load file tree (" + (retryCount + 1) + "/" + maxRetries + "):", err);
+        if (retryCount < maxRetries) {
+            setTimeout(() => loadFileTree(true, retryCount + 1, maxRetries), 500);
+        }
     }
 }
 

@@ -34,9 +34,17 @@ public:
         std::cout << "JSON root dir: " << rootDir << std::endl;
 
         win.set_root_folder(webPath);
-        win.show("");
+        if (!win.show_wv("")) {
+            win.show("");
+        }
 
-        setWindowIcon();
+        // Wait for window HWND to become available and set icon immediately
+        for (int i = 0; i < 200 && !iconApplied; i++) {
+            setWindowIcon();
+            if (!iconApplied) {
+                webui_wait_async();
+            }
+        }
 
         while (true) {
             if (closeRequested && !forceClosing) {
@@ -79,6 +87,7 @@ private:
     std::string theme = "dark";
     std::string configPath;
     std::vector<std::pair<std::string, std::string>> jsonFiles;
+    bool iconApplied = false;
 
     std::string resolveWebPath() {
         std::string exeDir = getExeDir();
@@ -97,16 +106,27 @@ private:
     }
 
     void setWindowIcon() {
-        HMODULE hInst = GetModuleHandleA(NULL);
-        HICON hIcon = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR);
-        HICON hIconSmall = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
+        if (iconApplied) return;
         HWND hwnd = (HWND)win.win32_get_hwnd();
-        if (hwnd && hIcon) {
+        if (!hwnd) return;
+
+        HMODULE hInst = GetModuleHandleA(NULL);
+        HICON hIcon = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON,
+            GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0);
+        HICON hIconSmall = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON,
+            GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0);
+
+        if (hIcon) {
             SendMessageA(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+            SetClassLongPtrA(hwnd, GCLP_HICON, (LONG_PTR)hIcon);
         }
-        if (hwnd && hIconSmall) {
+        if (hIconSmall) {
             SendMessageA(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIconSmall);
+            SetClassLongPtrA(hwnd, GCLP_HICONSM, (LONG_PTR)hIconSmall);
         }
+
+        SetWindowTextA(hwnd, "JsonPilot");
+        iconApplied = true;
     }
 
     static std::string getExeDir() {
