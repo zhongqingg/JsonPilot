@@ -14,6 +14,8 @@ add_definitions(-DWEB_SOURCE_DIR="${WEB_SOURCE_DIR}")
 if(WIN32)
     add_executable(jsoneditor WIN32
         src/main.cpp
+        src/resources.rc
+        src/icon.ico
     )
 else()
     add_executable(jsoneditor
@@ -22,7 +24,7 @@ else()
 endif()
 
 target_include_directories(jsoneditor PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/nlohmannjson
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/nlohmannjson/single_include
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/webui/include
 )
 

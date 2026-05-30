@@ -1,5 +1,5 @@
 #include "webui.hpp"
-#include "json.hpp"
+#include "nlohmann/json.hpp"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -35,6 +35,8 @@ public:
 
         win.set_root_folder(webPath);
         win.show("");
+
+        setWindowIcon();
 
         while (true) {
             if (closeRequested && !forceClosing) {
@@ -92,6 +94,19 @@ private:
         }
 
         return "web";
+    }
+
+    void setWindowIcon() {
+        HMODULE hInst = GetModuleHandleA(NULL);
+        HANDLE hIcon = LoadImageA(hInst, "IDI_ICON1", IMAGE_ICON, 32, 32, LR_DEFAULTCOLOR);
+        HANDLE hIconSmall = LoadImageA(hInst, "IDI_ICON1", IMAGE_ICON, 16, 16, LR_DEFAULTCOLOR);
+        HWND hwnd = (HWND)win.win32_get_hwnd();
+        if (hwnd && hIcon) {
+            SendMessageA(hwnd, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+        }
+        if (hwnd && hIconSmall) {
+            SendMessageA(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)hIconSmall);
+        }
     }
 
     static std::string getExeDir() {
