@@ -198,6 +198,49 @@ body {
     background: var(--btn-bg);
 }
 
+#path-bar {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px;
+    background: var(--bg-sidebar-header);
+    border-bottom: 1px solid var(--border-color);
+}
+
+#path-input {
+    flex: 1;
+    min-width: 0;
+    padding: 4px 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-input);
+    border-radius: 3px;
+    color: var(--text-primary);
+    font-size: 12px;
+    outline: none;
+}
+
+#path-input:focus {
+    border-color: var(--border-focus);
+}
+
+#btnBrowseFolder {
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 14px;
+    width: 28px;
+    height: 28px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+#btnBrowseFolder:hover {
+    background: var(--btn-cancel-hover);
+}
+
 #file-tree {
     flex: 1;
     overflow-y: auto;

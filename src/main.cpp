@@ -25,6 +25,8 @@ public:
         win.bind("save_file_as", this, &JsonEditorApp::bindSaveFileAs);
         win.bind("get_config", this, &JsonEditorApp::bindGetConfig);
         win.bind("show_save_dialog", this, &JsonEditorApp::bindShowSaveDialog);
+        win.bind("browse_folder", this, &JsonEditorApp::bindBrowseFolder);
+        win.bind("set_root_dir", this, &JsonEditorApp::bindSetRootDir);
         win.set_close_handler_wv(closeHandler);
     }
 
@@ -182,11 +184,11 @@ private:
             rootDir = "data";
         }
 
-        if (!fs::path(rootDir).is_absolute()) {
+        if (!fs::u8path(rootDir).is_absolute()) {
             fs::path base = fs::path(configPath).parent_path();
             if (base.empty()) base = fs::current_path();
-            fs::path absPath = base / rootDir;
-            rootDir = fs::absolute(absPath).string();
+            fs::path absPath = base / fs::u8path(rootDir);
+            rootDir = fs::absolute(absPath).u8string();
         }
     }
 
@@ -201,27 +203,27 @@ private:
 
     void scanJsonFiles() {
         jsonFiles.clear();
-        if (!fs::exists(rootDir)) {
+        if (!fs::exists(fs::u8path(rootDir))) {
             std::cerr << "Root dir does not exist: " << rootDir << std::endl;
             return;
         }
-        scanDir(rootDir, "");
+        scanDir(fs::u8path(rootDir), "");
     }
 
     void scanDir(const fs::path& dir, const std::string& relativePath) {
         try {
             for (const auto& entry : fs::directory_iterator(dir)) {
                 std::string rel = relativePath.empty()
-                    ? entry.path().filename().string()
-                    : relativePath + "/" + entry.path().filename().string();
+                    ? entry.path().filename().u8string()
+                    : relativePath + "/" + entry.path().filename().u8string();
 
                 if (entry.is_directory()) {
                     scanDir(entry.path(), rel);
                 } else if (entry.is_regular_file()) {
-                    std::string ext = entry.path().extension().string();
+                    std::string ext = entry.path().extension().u8string();
                     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
                     if (ext == ".json") {
-                        jsonFiles.emplace_back(rel, entry.path().string());
+                        jsonFiles.emplace_back(rel, entry.path().u8string());
                     }
                 }
             }
@@ -234,10 +236,10 @@ private:
         json tree = json::object();
         for (const auto& [relPath, absPath] : jsonFiles) {
             json* current = &tree;
-            fs::path p(relPath);
+            fs::path p = fs::u8path(relPath);
             std::string accum;
             for (const auto& part : p) {
-                std::string partStr = part.string();
+                std::string partStr = part.u8string();
                 if (!accum.empty()) accum += "/";
                 accum += partStr;
                 if (part == p.filename()) {
@@ -278,7 +280,7 @@ private:
                 pDlg->SetDefaultExtension(L"json");
                 pDlg->SetTitle(L"Save JSON File");
                 if (!rootDir.empty()) {
-                    std::wstring wRoot = fs::path(rootDir).wstring();
+                    std::wstring wRoot = fs::u8path(rootDir).wstring();
                     IShellItem* pFolder = NULL;
                     HRESULT hr2 = SHCreateItemFromParsingName(wRoot.c_str(), NULL, IID_PPV_ARGS(&pFolder));
                     if (SUCCEEDED(hr2) && pFolder) {
@@ -335,7 +337,7 @@ private:
             result["error"] = "File not found: " + relPath;
         } else {
             try {
-                std::ifstream f(absPath);
+                std::ifstream f(fs::u8path(absPath));
                 if (f.is_open()) {
                     json data = json::parse(f);
                     result["success"] = true;
@@ -362,12 +364,12 @@ private:
 
         json result;
         if (absPath.empty()) {
-            absPath = (fs::path(rootDir) / relPath).string();
+            absPath = (fs::u8path(rootDir) / fs::u8path(relPath)).u8string();
         }
 
         try {
             json parsed = json::parse(content);
-            std::ofstream f(absPath);
+            std::ofstream f(fs::u8path(absPath));
             if (f.is_open()) {
                 f << parsed.dump(2);
                 f.close();
@@ -391,24 +393,24 @@ private:
 
         fs::path savePath(filePath);
         if (!savePath.is_absolute()) {
-            savePath = fs::path(rootDir) / filePath;
+            savePath = fs::u8path(rootDir) / fs::u8path(filePath);
         }
 
         json result;
         try {
             json parsed = json::parse(content);
-            std::ofstream f(savePath.string());
+            std::ofstream f(savePath);
             if (f.is_open()) {
                 f << parsed.dump(2);
                 f.close();
                 result["success"] = true;
-                result["path"] = savePath.string();
-                if (!fs::path(filePath).is_absolute()) {
+                result["path"] = savePath.u8string();
+                if (!fs::u8path(filePath).is_absolute()) {
                     scanJsonFiles();
                 }
             } else {
                 result["success"] = false;
-                result["error"] = "Cannot write file: " + savePath.string();
+                result["error"] = "Cannot write file: " + savePath.u8string();
             }
         } catch (const json::parse_error& ex) {
             result["success"] = false;
@@ -418,15 +420,92 @@ private:
         e->return_string(result.dump());
     }
 
+    void bindBrowseFolder(webui::window::event* e) {
+        std::string result;
+        HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+        if (SUCCEEDED(hr)) {
+            IFileOpenDialog* pDlg = NULL;
+            hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_ALL,
+                                  IID_IFileOpenDialog, (void**)&pDlg);
+            if (SUCCEEDED(hr)) {
+                pDlg->SetOptions(FOS_PICKFOLDERS | FOS_PATHMUSTEXIST);
+                pDlg->SetTitle(L"Select JSON Data Root Directory");
+                if (!rootDir.empty()) {
+                    std::wstring wRoot = fs::u8path(rootDir).wstring();
+                    IShellItem* pFolder = NULL;
+                    HRESULT hr2 = SHCreateItemFromParsingName(wRoot.c_str(), NULL, IID_PPV_ARGS(&pFolder));
+                    if (SUCCEEDED(hr2) && pFolder) {
+                        pDlg->SetFolder(pFolder);
+                        pFolder->Release();
+                    }
+                }
+                hr = pDlg->Show(NULL);
+                if (SUCCEEDED(hr)) {
+                    IShellItem* pItem = NULL;
+                    hr = pDlg->GetResult(&pItem);
+                    if (SUCCEEDED(hr) && pItem) {
+                        LPWSTR pszPath = NULL;
+                        hr = pItem->GetDisplayName(SIGDN_FILESYSPATH, &pszPath);
+                        if (SUCCEEDED(hr) && pszPath) {
+                            int len = WideCharToMultiByte(CP_UTF8, 0, pszPath, -1, NULL, 0, NULL, NULL);
+                            if (len > 0) {
+                                result.resize(len - 1);
+                                WideCharToMultiByte(CP_UTF8, 0, pszPath, -1, &result[0], len, NULL, NULL);
+                            }
+                            CoTaskMemFree(pszPath);
+                        }
+                        pItem->Release();
+                    }
+                }
+                pDlg->Release();
+            }
+            CoUninitialize();
+        }
+        e->return_string(result);
+    }
+
+    void bindSetRootDir(webui::window::event* e) {
+        std::string newRoot = e->get_string(0);
+        if (newRoot.empty()) return;
+
+        // Resolve relative paths against config file location
+        if (!fs::u8path(newRoot).is_absolute()) {
+            fs::path base = fs::path(configPath).parent_path();
+            if (base.empty()) base = fs::current_path();
+            fs::path absPath = base / newRoot;
+            newRoot = fs::absolute(absPath).u8string();
+        }
+
+        rootDir = newRoot;
+        saveConfig();
+        scanJsonFiles();
+        json tree = buildFileTreeJson();
+        json result;
+        result["success"] = true;
+        result["root_dir"] = rootDir;
+        result["tree"] = tree;
+        e->return_string(result.dump());
+    }
+
+    void saveConfig() {
+        fs::path configAbsPath = fs::absolute(configPath);
+        std::ofstream f(configPath);
+        if (f.is_open()) {
+            f << "root_dir=" << rootDir << "\n";
+            f << "theme=" << theme << "\n";
+            f.close();
+        }
+    }
+
     std::string findAbsPath(const std::string& relPath) {
         for (const auto& [r, abs] : jsonFiles) {
             if (r == relPath) {
                 return abs;
             }
         }
-        fs::path candidate = fs::path(rootDir) / relPath;
+        fs::path candidate = fs::u8path(rootDir) / fs::u8path(relPath);
         if (fs::exists(candidate)) {
-            return fs::absolute(candidate).string();
+            return fs::absolute(candidate).u8string();
         }
         return "";
     }

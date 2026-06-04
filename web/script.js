@@ -557,8 +557,9 @@ function executeReplace() {
 }
 
 async function init() {
-    await loadFileTree(true);
     await applyConfigTheme();
+    await populateRootPath();
+    await loadFileTree(true);
 
     document.getElementById("btnRefresh").addEventListener("click", loadFileTree);
     document.getElementById("btnTheme").addEventListener("click", toggleTheme);
@@ -602,6 +603,15 @@ async function init() {
     document.getElementById("btnRedo").addEventListener("click", redo);
     document.getElementById("btnSearch").addEventListener("click", toggleSearch);
     setupDragAndDrop();
+
+    // Path bar
+    document.getElementById("btnBrowseFolder").addEventListener("click", onBrowseRootFolder);
+    document.getElementById("path-input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") applyRootPath();
+    });
+    document.getElementById("path-input").addEventListener("blur", () => {
+        applyRootPath();
+    });
 
     document.getElementById("search-input").addEventListener("input", (e) => {
         performSearch(e.target.value);
@@ -731,6 +741,48 @@ function toggleTheme() {
 
 function updateThemeButton(theme) {
     document.getElementById("btnTheme").textContent = theme === "dark" ? "☀️" : "🌙";
+}
+
+let lastRootPath = "";
+
+async function populateRootPath() {
+    try {
+        const configStr = await get_config();
+        const config = JSON.parse(configStr);
+        lastRootPath = config.root_dir || "";
+        document.getElementById("path-input").value = lastRootPath;
+    } catch (e) {
+        console.error("Failed to get config:", e);
+    }
+}
+
+async function onBrowseRootFolder() {
+    try {
+        const folderPath = await browse_folder();
+        if (folderPath && folderPath !== lastRootPath) {
+            document.getElementById("path-input").value = folderPath;
+            await applyRootPath();
+        }
+    } catch (e) {
+        console.error("Browse folder error:", e);
+    }
+}
+
+async function applyRootPath() {
+    const newPath = document.getElementById("path-input").value.trim();
+    if (!newPath || newPath === lastRootPath) return;
+    try {
+        const resultStr = await set_root_dir(newPath);
+        const result = JSON.parse(resultStr);
+        if (result.success) {
+            lastRootPath = result.root_dir;
+            document.getElementById("path-input").value = lastRootPath;
+            const tree = result.tree;
+            renderFileTree(tree, document.getElementById("file-tree"), "", null);
+        }
+    } catch (e) {
+        console.error("Set root dir error:", e);
+    }
 }
 
 async function loadFileTree(retryOnEmpty, retryCount, maxRetries) {
