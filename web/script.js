@@ -1,6 +1,8 @@
 let jsonData = null;
 let currentFilePath = "";
 let modified = false;
+let isPlainTextMode = false;
+let plainTextContent = null;
 let confirmCallback = null;
 let diffData = { modified: {}, added: {}, deleted: {} };
 
@@ -715,10 +717,6 @@ async function init() {
     };
 }
 
-function has_unsaved_changes() {
-    return modified ? 1 : 0;
-}
-
 async function applyConfigTheme() {
     try {
         const configStr = await get_config();
@@ -860,8 +858,18 @@ function renderFileTree(node, container, basePath, parentItem) {
     }
 }
 
-function resetEditorState(data, path, activeItem) {
-    jsonData = data;
+function resetEditorState(data, path, activeItem, plainText, rawContent, errorMsg) {
+    isPlainTextMode = !!plainText;
+    if (isPlainTextMode) {
+        jsonData = null;
+        plainTextContent = rawContent;
+        window._rawText = rawContent;
+        document.getElementById('plain-text-warning').textContent = errorMsg || 'Invalid JSON format';
+    } else {
+        jsonData = data;
+        plainTextContent = null;
+        window._rawText = null;
+    }
     currentFilePath = path;
     modified = false;
     clearDiff();
@@ -875,7 +883,13 @@ function resetEditorState(data, path, activeItem) {
 }
 
 function canDiscardCurrentChanges() {
+    if (isPlainTextMode) return true;
     return !modified || window.confirm("You have unsaved changes. Load a new file without saving?");
+}
+
+function has_unsaved_changes() {
+    if (isPlainTextMode) return 0;
+    return modified ? 1 : 0;
 }
 
 function setupDragAndDrop() {
@@ -916,18 +930,67 @@ async function openFile(relPath, el) {
             showError(result.error || "Failed to load file");
             return;
         }
-        resetEditorState(result.data, relPath, el);
+        if (result.invalid_json) {
+            resetEditorState(null, relPath, el, true, result.raw_text, result.error);
+        } else {
+            resetEditorState(result.data, relPath, el, false);
+        }
     } catch (err) {
         showError("Error loading file: " + err.message);
     }
 }
 
 function updateUI() {
-    document.getElementById("file-path-display").textContent = currentFilePath || "No file selected";
-    document.getElementById("btnSave").disabled = !modified || !currentFilePath;
-    document.getElementById("btnSaveAs").disabled = !jsonData;
+    document.getElementById("file-path-display").textContent = currentFilePath
+        ? currentFilePath + (isPlainTextMode ? " (invalid JSON)" : (modified ? " (modified)" : ""))
+        : "No file selected";
+
     const treeContainer = document.getElementById("json-tree");
     const emptyState = document.getElementById("empty-state");
+    const plainTextView = document.getElementById("plain-text-view");
+    const plainTextEl = document.getElementById("plain-text-content");
+    const contextMenu = document.getElementById("context-menu");
+
+    if (isPlainTextMode) {
+        treeContainer.classList.add("hidden");
+        emptyState.classList.add("hidden");
+        plainTextView.classList.remove("hidden");
+        plainTextEl.value = window._rawText || "";
+        contextMenu.classList.add("hidden");
+
+        // Track edits in plain text mode
+        if (!plainTextEl._listenerAttached) {
+            plainTextEl._listenerAttached = true;
+            plainTextEl.addEventListener("input", () => {
+                window._rawText = plainTextEl.value;
+                modified = true;
+                document.getElementById("btnSave").disabled = false;
+                document.getElementById("file-path-display").textContent =
+                    currentFilePath + " (invalid JSON, modified)";
+            });
+        }
+
+        document.getElementById("btnSave").disabled = !currentFilePath;
+        document.getElementById("btnSaveAs").disabled = !currentFilePath;
+        document.getElementById("btnUndo").disabled = true;
+        document.getElementById("btnRedo").disabled = true;
+        document.getElementById("btnExpandAll").disabled = true;
+        document.getElementById("btnCollapseAll").disabled = true;
+        document.getElementById("btnSearch").disabled = true;
+        return;
+    }
+
+    // JSON mode
+    plainTextView.classList.add("hidden");
+    treeContainer.classList.remove("hidden");
+    document.getElementById("btnUndo").disabled = false;
+    document.getElementById("btnRedo").disabled = false;
+    document.getElementById("btnExpandAll").disabled = false;
+    document.getElementById("btnCollapseAll").disabled = false;
+    document.getElementById("btnSearch").disabled = false;
+    document.getElementById("btnSave").disabled = !modified || !currentFilePath;
+    document.getElementById("btnSaveAs").disabled = !jsonData;
+
     if (!jsonData) {
         treeContainer.innerHTML = "";
         emptyState.classList.remove("hidden");
@@ -1482,6 +1545,7 @@ function markModified() {
 
 function setupContextMenu(container, path, key, isArrayElement, val) {
     container.addEventListener("contextmenu", (e) => {
+        if (isPlainTextMode) return;
         e.preventDefault();
         e.stopPropagation();
         const isObj = val !== null && typeof val === "object";
@@ -1490,6 +1554,7 @@ function setupContextMenu(container, path, key, isArrayElement, val) {
 }
 
 function showContextMenu(x, y, path, key, isArrayElement, val, isObject) {
+    if (isPlainTextMode) return;
     lastActivePath = path;
     const menu = document.getElementById("context-menu");
     menu.classList.remove("hidden");
@@ -1622,17 +1687,29 @@ function showError(msg) {
 }
 
 async function saveFile() {
-    if (!modified || !currentFilePath || !jsonData) return;
+    if (!currentFilePath) return;
+    if (!isPlainTextMode && (!modified || !jsonData)) return;
     try {
-        const content = JSON.stringify(jsonData, null, 2);
-        const resultStr = await save_file(currentFilePath, content);
+        let resultStr;
+        if (isPlainTextMode) {
+            const textarea = document.getElementById("plain-text-content");
+            const rawText = textarea ? textarea.value : (window._rawText || "");
+            resultStr = await save_raw_file(currentFilePath, rawText);
+        } else {
+            const content = JSON.stringify(jsonData, null, 2);
+            resultStr = await save_file(currentFilePath, content);
+        }
         const result = JSON.parse(resultStr);
         if (result.success) {
             modified = false;
-            clearDiff();
-            rerenderJson();
+            if (!isPlainTextMode) {
+                clearDiff();
+                rerenderJson();
+            }
             document.getElementById("btnSave").disabled = true;
-            document.getElementById("file-path-display").textContent = currentFilePath;
+            document.getElementById("file-path-display").textContent = currentFilePath
+                ? currentFilePath + (isPlainTextMode ? " (invalid JSON)" : "")
+                : "No file selected";
         } else {
             showError("Save failed: " + (result.error || "unknown error"));
         }
@@ -1642,7 +1719,7 @@ async function saveFile() {
 }
 
 function showSaveAsDialog() {
-    if (!jsonData) return;
+    if (!jsonData && !isPlainTextMode) return;
     document.getElementById("save-as-path").value = currentFilePath || "untitled.json";
     document.getElementById("save-as-dialog").classList.remove("hidden");
     setTimeout(() => document.getElementById("save-as-path").focus(), 100);
@@ -1667,14 +1744,23 @@ async function doSaveAs() {
     const filePath = document.getElementById("save-as-path").value.trim();
     if (!filePath) return;
     try {
-        const content = JSON.stringify(jsonData, null, 2);
-        const resultStr = await save_file_as(filePath, content);
+        let resultStr;
+        if (isPlainTextMode) {
+            const textarea = document.getElementById("plain-text-content");
+            const rawText = textarea ? textarea.value : (window._rawText || "");
+            resultStr = await save_raw_file(filePath, rawText);
+        } else {
+            const content = JSON.stringify(jsonData, null, 2);
+            resultStr = await save_file_as(filePath, content);
+        }
         const result = JSON.parse(resultStr);
         if (result.success) {
             hideSaveAsDialog();
             modified = false;
-            clearDiff();
-            rerenderJson();
+            if (!isPlainTextMode) {
+                clearDiff();
+                rerenderJson();
+            }
             currentFilePath = result.path || filePath;
             document.getElementById("btnSave").disabled = true;
             document.getElementById("file-path-display").textContent = currentFilePath;

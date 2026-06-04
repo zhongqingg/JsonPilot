@@ -23,6 +23,7 @@ public:
         win.bind("load_file", this, &JsonEditorApp::bindLoadFile);
         win.bind("save_file", this, &JsonEditorApp::bindSaveFile);
         win.bind("save_file_as", this, &JsonEditorApp::bindSaveFileAs);
+        win.bind("save_raw_file", this, &JsonEditorApp::bindSaveRawFile);
         win.bind("get_config", this, &JsonEditorApp::bindGetConfig);
         win.bind("show_save_dialog", this, &JsonEditorApp::bindShowSaveDialog);
         win.bind("browse_folder", this, &JsonEditorApp::bindBrowseFolder);
@@ -328,30 +329,64 @@ private:
     }
 
     void bindLoadFile(webui::window::event* e) {
-        std::string relPath = e->get_string(0);
-        std::string absPath = findAbsPath(relPath);
-
         json result;
-        if (absPath.empty()) {
-            result["success"] = false;
-            result["error"] = "File not found: " + relPath;
-        } else {
-            try {
-                std::ifstream f(fs::u8path(absPath));
-                if (f.is_open()) {
-                    json data = json::parse(f);
-                    result["success"] = true;
-                    result["data"] = data;
-                    result["path"] = relPath;
-                    f.close();
-                } else {
-                    result["success"] = false;
-                    result["error"] = "Cannot open file: " + absPath;
-                }
-            } catch (const json::parse_error& ex) {
+        try {
+            std::string relPath = e->get_string(0);
+            std::string absPath = findAbsPath(relPath);
+
+            if (absPath.empty()) {
                 result["success"] = false;
-                result["error"] = std::string("JSON parse error: ") + ex.what();
+                result["error"] = "File not found: " + relPath;
+                e->return_string(result.dump());
+                return;
             }
+
+            // Limit file size to 10 MB to prevent memory issues
+            auto fileSize = fs::file_size(fs::u8path(absPath));
+            if (fileSize > 10 * 1024 * 1024) {
+                result["success"] = false;
+                result["error"] = "File too large (>10 MB): " + absPath;
+                e->return_string(result.dump());
+                return;
+            }
+
+            std::ifstream f(fs::u8path(absPath), std::ios::binary);
+            if (!f.is_open()) {
+                result["success"] = false;
+                result["error"] = "Cannot open file: " + absPath;
+                e->return_string(result.dump());
+                return;
+            }
+
+            std::string content((std::istreambuf_iterator<char>(f)),
+                                 std::istreambuf_iterator<char>());
+            f.close();
+
+            if (content.empty()) {
+                result["success"] = false;
+                result["error"] = "File is empty";
+                e->return_string(result.dump());
+                return;
+            }
+
+            try {
+                json data = json::parse(content);
+                result["success"] = true;
+                result["data"] = data;
+                result["path"] = relPath;
+            } catch (...) {
+                result["success"] = true;
+                result["invalid_json"] = true;
+                result["raw_text"] = content;
+                result["path"] = relPath;
+                result["error"] = "Invalid JSON format - showing as plain text";
+            }
+        } catch (const std::exception& ex) {
+            result["success"] = false;
+            result["error"] = std::string("Unexpected error: ") + ex.what();
+        } catch (...) {
+            result["success"] = false;
+            result["error"] = "Unknown error reading file";
         }
 
         e->return_string(result.dump());
@@ -415,6 +450,30 @@ private:
         } catch (const json::parse_error& ex) {
             result["success"] = false;
             result["error"] = std::string("Invalid JSON: ") + ex.what();
+        }
+
+        e->return_string(result.dump());
+    }
+
+    void bindSaveRawFile(webui::window::event* e) {
+        std::string relPath = e->get_string(0);
+        std::string content = e->get_string(1);
+        std::string absPath = findAbsPath(relPath);
+
+        json result;
+        if (absPath.empty()) {
+            absPath = (fs::u8path(rootDir) / fs::u8path(relPath)).u8string();
+        }
+
+        std::ofstream f(fs::u8path(absPath));
+        if (f.is_open()) {
+            f << content;
+            f.close();
+            result["success"] = true;
+            result["path"] = relPath;
+        } else {
+            result["success"] = false;
+            result["error"] = "Cannot write file: " + absPath;
         }
 
         e->return_string(result.dump());
