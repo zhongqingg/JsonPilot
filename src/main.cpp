@@ -93,7 +93,6 @@ private:
     std::string rootDir;
     std::string theme = "dark";
     std::string configPath;
-    std::string logPath;
     std::vector<std::pair<std::string, std::string>> jsonFiles;
     bool iconApplied = false;
 
@@ -149,26 +148,8 @@ private:
         return ".";
     }
 
-    void logLine(const std::string& message) {
-        if (logPath.empty()) {
-            logPath = getExeDir() + "\\JsonPilot.log";
-        }
-        std::ofstream log(logPath, std::ios::app | std::ios::binary);
-        if (log.is_open()) {
-            log << message << "\n";
-        }
-    }
-
     void loadConfig() {
         std::string exeDir = getExeDir();
-        logPath = exeDir + "\\JsonPilot.log";
-        {
-            std::ofstream log(logPath, std::ios::trunc | std::ios::binary);
-            if (log.is_open()) {
-                log << "JsonPilot debug log\n";
-                log << "exe_dir=" << exeDir << "\n";
-            }
-        }
         std::vector<std::string> candidates = {
             exeDir + "\\config.txt",
             "config.txt",
@@ -211,9 +192,6 @@ private:
             fs::path absPath = base / fs::u8path(rootDir);
             rootDir = fs::absolute(absPath).u8string();
         }
-        logLine("config_path=" + configPath);
-        logLine("root_dir=" + rootDir);
-        logLine("theme=" + theme);
     }
 
     static void trim(std::string& s) {
@@ -227,16 +205,11 @@ private:
 
     void scanJsonFiles() {
         jsonFiles.clear();
-        logLine("scan_start root_dir=" + rootDir);
         if (!fs::exists(fs::u8path(rootDir))) {
-            logLine("scan_error root dir does not exist");
+            std::cerr << "Root dir does not exist: " << rootDir << std::endl;
             return;
         }
         scanDir(fs::u8path(rootDir), "");
-        logLine("scan_done json_count=" + std::to_string(jsonFiles.size()));
-        for (const auto& [relPath, absPath] : jsonFiles) {
-            logLine("json_file rel=" + relPath + " abs=" + absPath);
-        }
     }
 
     void scanDir(const fs::path& dir, const std::string& relativePath) {
@@ -261,43 +234,6 @@ private:
         } catch (...) {
             std::cerr << "Unknown error scanning directory" << std::endl;
         }
-    }
-
-    json buildFileTreeJson() {
-        json tree = json::object();
-        for (const auto& [relPath, absPath] : jsonFiles) {
-            json* current = &tree;
-            // Split by '/' manually (avoid fs::path iterator issues)
-            std::vector<std::string> parts;
-            size_t start = 0, pos;
-            while ((pos = relPath.find('/', start)) != std::string::npos) {
-                parts.push_back(relPath.substr(start, pos - start));
-                start = pos + 1;
-            }
-            parts.push_back(relPath.substr(start));
-
-            for (size_t i = 0; i < parts.size(); i++) {
-                const std::string& partStr = parts[i];
-                if (!current->is_object()) {
-                    *current = json::object();
-                }
-                if (i == parts.size() - 1) {
-                    (*current)[partStr] = json{{"file", relPath}};
-                } else {
-                    if (!current->contains(partStr)) {
-                        (*current)[partStr] = json::object();
-                    }
-                    auto& next = (*current)[partStr];
-                    if (next.is_object() && next.contains("file")) {
-                        json old = next;
-                        next = json::object();
-                        next["__files__"] = old;
-                    }
-                    current = &(*current)[partStr];
-                }
-            }
-        }
-        return tree;
     }
 
     void bindShowSaveDialog(webui::window::event* e) {
@@ -571,11 +507,14 @@ private:
         rootDir = newRoot;
         saveConfig();
         scanJsonFiles();
-        json tree = buildFileTreeJson();
+        std::string treeData;
+        for (const auto& [rel, abs] : jsonFiles) {
+            treeData += rel + "\n";
+        }
         json result;
         result["success"] = true;
         result["root_dir"] = rootDir;
-        result["tree"] = tree;
+        result["tree"] = treeData;
         e->return_string(result.dump());
     }
 
@@ -594,9 +533,12 @@ private:
             bool created = fs::create_directory(newFolder, ec);
             if (created) {
                 scanJsonFiles();
-                json tree = buildFileTreeJson();
+                std::string treeData;
+                for (const auto& [rel, abs] : jsonFiles) {
+                    treeData += rel + "\n";
+                }
                 result["success"] = true;
-                result["tree"] = tree;
+                result["tree"] = treeData;
             } else if (fs::exists(newFolder, ec)) {
                 result["success"] = false;
                 result["error"] = "Folder already exists";
@@ -634,9 +576,12 @@ private:
                     f << "{}";
                     f.close();
                     scanJsonFiles();
-                    json tree = buildFileTreeJson();
+                    std::string treeData;
+                    for (const auto& [rel, abs] : jsonFiles) {
+                        treeData += rel + "\n";
+                    }
                     result["success"] = true;
-                    result["tree"] = tree;
+                    result["tree"] = treeData;
                 } else {
                     result["success"] = false;
                     result["error"] = "Cannot create file";
@@ -662,9 +607,12 @@ private:
             fs::remove_all(targetPath, ec);
             if (!ec) {
                 scanJsonFiles();
-                json tree = buildFileTreeJson();
+                std::string treeData;
+                for (const auto& [rel, abs] : jsonFiles) {
+                    treeData += rel + "\n";
+                }
                 result["success"] = true;
-                result["tree"] = tree;
+                result["tree"] = treeData;
             } else {
                 result["success"] = false;
                 result["error"] = "Cannot delete: " + ec.message();
@@ -689,9 +637,12 @@ private:
         fs::rename(oldPath, newPath, ec);
         if (!ec) {
             scanJsonFiles();
-            json tree = buildFileTreeJson();
+            std::string treeData;
+            for (const auto& [rel, abs] : jsonFiles) {
+                treeData += rel + "\n";
+            }
             result["success"] = true;
-            result["tree"] = tree;
+            result["tree"] = treeData;
         } else if (fs::exists(newPath, ec)) {
             result["success"] = false;
             result["error"] = "A file or folder with that name already exists";
@@ -719,9 +670,12 @@ private:
             fs::copy_file(srcPath, dstPath, ec);
             if (!ec) {
                 scanJsonFiles();
-                json tree = buildFileTreeJson();
+                std::string treeData;
+                for (const auto& [rel, abs] : jsonFiles) {
+                    treeData += rel + "\n";
+                }
                 result["success"] = true;
-                result["tree"] = tree;
+                result["tree"] = treeData;
             } else {
                 result["success"] = false;
                 result["error"] = "Cannot copy: " + ec.message();

@@ -2,11 +2,6 @@ let jsonData = null;
 let currentFilePath = "";
 let modified = false;
 let isPlainTextMode = false;
-function debugLog(msg) {
-    const el = document.getElementById("debug-info");
-    if (el) el.textContent = msg;
-    console.log("[JsonPilot]", msg);
-}
 let plainTextContent = null;
 let confirmCallback = null;
 let diffData = { modified: {}, added: {}, deleted: {} };
@@ -788,8 +783,7 @@ async function applyRootPath() {
         if (result.success) {
             lastRootPath = result.root_dir;
             document.getElementById("path-input").value = lastRootPath;
-            const tree = result.tree;
-            renderFileTree(tree, document.getElementById("file-tree"), "", null);
+            await reloadFullTree();
         }
     } catch (e) {
         console.error("Set root dir error:", e);
@@ -801,7 +795,6 @@ async function loadFileTree(retryCount) {
     try {
         const text = await get_file_tree();
         const paths = text.trim().split('\n').filter(p => p);
-        debugLog("got " + paths.length + " paths, raw len=" + text.length);
         // Build tree from flat path list on the JS side
         const tree = {};
         for (const relPath of paths) {
@@ -820,19 +813,12 @@ async function loadFileTree(retryCount) {
                 }
             }
         }
-        debugLog("tree top-level keys: " + Object.keys(tree).length + " -> " + Object.keys(tree).join(", "));
         renderFileTree(tree, document.getElementById("file-tree"), "", null);
         if (retryCount > 0) restoreExpandState();
         if (retryCount < 3 && Object.keys(tree).length === 0) {
             setTimeout(() => loadFileTree(retryCount + 1), 300);
         }
     } catch (err) {
-        if (retryCount === 0) {
-            // First call may fail if bridge not yet ready — retry silently
-            debugLog("Bridge not ready, retrying...");
-        } else {
-            debugLog("ERROR: " + err.message);
-        }
         if (retryCount < 3) {
             setTimeout(() => loadFileTree(retryCount + 1), 500);
         }
