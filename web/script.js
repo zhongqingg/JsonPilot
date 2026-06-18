@@ -2,6 +2,11 @@ let jsonData = null;
 let currentFilePath = "";
 let modified = false;
 let isPlainTextMode = false;
+function debugLog(msg) {
+    const el = document.getElementById("debug-info");
+    if (el) el.textContent = msg;
+    console.log("[JsonPilot]", msg);
+}
 let plainTextContent = null;
 let confirmCallback = null;
 let diffData = { modified: {}, added: {}, deleted: {} };
@@ -561,7 +566,15 @@ function executeReplace() {
 async function init() {
     await applyConfigTheme();
     await populateRootPath();
-    await loadFileTree(true);
+    await new Promise(r => setTimeout(r, 200));
+    await loadFileTree();
+
+    // File tree empty-space right-click: show menu
+    document.getElementById("file-tree").addEventListener("contextmenu", (e) => {
+        if (e.target !== document.getElementById("file-tree")) return;
+        e.preventDefault();
+        showFileTreeEmptyMenu(e.clientX, e.clientY);
+    });
 
     document.getElementById("btnRefresh").addEventListener("click", loadFileTree);
     document.getElementById("btnTheme").addEventListener("click", toggleTheme);
@@ -599,7 +612,7 @@ async function init() {
         }
     });
 
-    document.addEventListener("click", hideContextMenu);
+    document.addEventListener("click", () => { hideContextMenu(); hideAllMenus(); });
     document.addEventListener("contextmenu", (e) => e.preventDefault());
     document.getElementById("btnUndo").addEventListener("click", undo);
     document.getElementById("btnRedo").addEventListener("click", redo);
@@ -756,9 +769,9 @@ async function populateRootPath() {
 
 async function onBrowseRootFolder() {
     try {
-        const folderPath = await browse_folder();
-        if (folderPath && folderPath !== lastRootPath) {
-            document.getElementById("path-input").value = folderPath;
+        const itemPath = await browse_folder();
+        if (itemPath && itemPath !== lastRootPath) {
+            document.getElementById("path-input").value = itemPath;
             await applyRootPath();
         }
     } catch (e) {
@@ -783,35 +796,60 @@ async function applyRootPath() {
     }
 }
 
-async function loadFileTree(retryOnEmpty, retryCount, maxRetries) {
-    if (maxRetries === undefined) maxRetries = retryOnEmpty ? 10 : 1;
+async function loadFileTree(retryCount) {
     if (retryCount === undefined) retryCount = 0;
     try {
-        const treeStr = await get_file_tree();
-        const tree = JSON.parse(treeStr);
+        const text = await get_file_tree();
+        const paths = text.trim().split('\n').filter(p => p);
+        debugLog("got " + paths.length + " paths, raw len=" + text.length);
+        // Build tree from flat path list on the JS side
+        const tree = {};
+        for (const relPath of paths) {
+            const parts = relPath.split('/');
+            let node = tree;
+            for (let i = 0; i < parts.length; i++) {
+                const key = parts[i];
+                if (i === parts.length - 1) {
+                    node[key] = { file: relPath };
+                } else {
+                    if (!node[key]) node[key] = {};
+                    if (node[key].file) {
+                        node[key] = { __files__: node[key] };
+                    }
+                    node = node[key];
+                }
+            }
+        }
+        debugLog("tree top-level keys: " + Object.keys(tree).length + " -> " + Object.keys(tree).join(", "));
         renderFileTree(tree, document.getElementById("file-tree"), "", null);
-        if (retryCount < maxRetries && Object.keys(tree).length === 0) {
-            console.log("File tree empty, retrying... (" + (retryCount + 1) + "/" + maxRetries + ")");
-            setTimeout(() => loadFileTree(true, retryCount + 1, maxRetries), 500);
+        if (retryCount > 0) restoreExpandState();
+        if (retryCount < 3 && Object.keys(tree).length === 0) {
+            setTimeout(() => loadFileTree(retryCount + 1), 300);
         }
     } catch (err) {
-        console.error("Failed to load file tree (" + (retryCount + 1) + "/" + maxRetries + "):", err);
-        if (retryCount < maxRetries) {
-            setTimeout(() => loadFileTree(true, retryCount + 1, maxRetries), 500);
+        debugLog("ERROR: " + err.message);
+        if (retryCount < 3) {
+            setTimeout(() => loadFileTree(retryCount + 1), 500);
         }
     }
 }
 
-function renderFileTree(node, container, basePath, parentItem) {
-    container.innerHTML = "";
+function renderFileTree(node, container, basePath, parentItem, clearContainer = true) {
+    if (clearContainer) container.innerHTML = "";
     if (typeof node !== "object" || node === null) return;
-    const keys = Object.keys(node).sort();
-    for (const key of keys) {
-        const val = node[key];
-        if (key === "__files__") {
-            renderFileTree(val, container, basePath, parentItem);
-            continue;
+    const entries = [];
+    for (const key of Object.keys(node)) {
+        if (key === "__files__") continue;
+        entries.push([key, node[key]]);
+    }
+    if (node.__files__ && typeof node.__files__ === "object") {
+        for (const key of Object.keys(node.__files__)) {
+            entries.push([key, node.__files__[key]]);
         }
+    }
+    entries.sort(([a], [b]) => a.localeCompare(b));
+
+    for (const [key, val] of entries) {
         const item = document.createElement("div");
         item.className = "file-tree-item";
         const icon = document.createElement("span");
@@ -819,23 +857,44 @@ function renderFileTree(node, container, basePath, parentItem) {
         const label = document.createElement("span");
         label.className = "label";
 
+        const itemPath = basePath ? basePath + "/" + key : key;
+
         if (val && typeof val === "object" && val.file) {
             icon.textContent = "\uD83D\uDCC4";
             label.textContent = key;
-            const filePath = basePath ? basePath + "/" + key : key;
-            item.dataset.path = filePath;
-            item.addEventListener("click", () => openFile(filePath, item));
+            item.dataset.path = itemPath;
+            item.addEventListener("click", () => openFile(itemPath, item));
+            item.addEventListener("contextmenu", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                showFileTreeMenu(e.clientX, e.clientY, { type: 'file', path: itemPath, itemEl: item });
+            });
         } else {
+            const subVals = {};
+
+            // Gather sub-keys to check if folder has content
+            if (val && typeof val === "object") {
+                Object.keys(val).filter(k => k !== "__files__").forEach(sk => { subVals[sk] = val[sk]; });
+            }
+
             icon.textContent = "\uD83D\uDCC1";
             label.textContent = key;
             item.classList.add("folder");
-            item.addEventListener("click", (e) => {
+            // Only add toggle if folder actually has content
+            if (Object.keys(subVals).length > 0) {
+                item.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    const children = item.nextElementSibling;
+                    if (children) {
+                        const collapsed = children.classList.toggle("hidden");
+                        icon.textContent = collapsed ? "\uD83D\uDCC1" : "\uD83D\uDCC2";
+                    }
+                });
+            }
+            item.addEventListener("contextmenu", (e) => {
+                e.preventDefault();
                 e.stopPropagation();
-                const children = item.nextElementSibling;
-                if (children) {
-                    children.classList.toggle("hidden");
-                    icon.textContent = children.classList.contains("hidden") ? "\uD83D\uDCC1" : "\uD83D\uDCC2";
-                }
+                showFileTreeMenu(e.clientX, e.clientY, { type: 'folder', path: itemPath, itemEl: item });
             });
         }
         item.appendChild(icon);
@@ -853,6 +912,7 @@ function renderFileTree(node, container, basePath, parentItem) {
                 renderFileTree(subNode, childContainer, newBase, item);
                 container.appendChild(childContainer);
                 item.dataset.folder = "true";
+                item.dataset.path = itemPath;
             }
         }
     }
@@ -881,6 +941,216 @@ function resetEditorState(data, path, activeItem, plainText, rawContent, errorMs
     setActiveFileItem(activeItem || null);
     updateUI();
 }
+
+/* ── File Tree Context Menu ── */
+
+let ftContextTarget = null; // { type:'file'|'folder'|'empty', path, itemEl }
+
+function showFileTreeMenu(x, y, target) {
+    ftContextTarget = target;
+    hideContextMenu();
+    const menu = document.getElementById('filetree-menu');
+
+    // Show/hide items based on target type
+    menu.querySelector('[data-action="ft-rename"]').style.display = 'none';
+    menu.querySelector('[data-action="ft-copy"]').style.display = 'none';
+    menu.querySelector('[data-action="ft-newfile"]').style.display = 'none';
+    menu.querySelector('[data-action="ft-delete"]').style.display = 'none';
+
+    if (target.type === 'file') {
+        menu.querySelector('[data-action="ft-rename"]').style.display = '';
+        menu.querySelector('[data-action="ft-copy"]').style.display = '';
+        menu.querySelector('[data-action="ft-delete"]').style.display = '';
+    } else if (target.type === 'folder') {
+        menu.querySelector('[data-action="ft-rename"]').style.display = '';
+        menu.querySelector('[data-action="ft-newfile"]').style.display = '';
+        menu.querySelector('[data-action="ft-delete"]').style.display = '';
+    }
+
+    positionAndShowMenu(menu, x, y);
+}
+
+function showFileTreeEmptyMenu(x, y) {
+    ftContextTarget = { type: 'empty', path: '', itemEl: null };
+    hideContextMenu();
+    const menu = document.getElementById('filetree-empty-menu');
+    positionAndShowMenu(menu, x, y);
+}
+
+function positionAndShowMenu(menu, x, y) {
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    let left = Math.min(x, window.innerWidth - mw - 8);
+    let top = y;
+    if (top + mh > window.innerHeight - 8) top = Math.max(8, window.innerHeight - mh - 8);
+    menu.style.left = Math.max(8, left) + 'px';
+    menu.style.top = Math.max(8, top) + 'px';
+    menu.classList.remove('hidden');
+
+    menu.querySelectorAll('.menu-item').forEach(item => {
+        item.onclick = async (e) => {
+            e.stopPropagation();
+            const action = item.dataset.action;
+            const target = { ...ftContextTarget };
+            hideAllMenus();
+            try {
+                await handleFileTreeAction(target, action);
+            } catch (err) {
+                console.error('File tree action error:', err);
+            }
+        };
+    });
+}
+
+function hideAllMenus() {
+    document.getElementById('filetree-menu').classList.add('hidden');
+    document.getElementById('filetree-empty-menu').classList.add('hidden');
+    hideFileTreeMenu();
+}
+
+function hideFileTreeMenu() {
+    document.getElementById('filetree-menu').classList.add('hidden');
+    document.getElementById('filetree-empty-menu').classList.add('hidden');
+    ftContextTarget = null;
+}
+
+async function handleFileTreeAction(t, action) {
+    if (!t) return;
+
+    if (action === 'fe-newfolder') {
+        const name = prompt('New folder name:');
+        if (name) await createFolderOp('', name);
+        return;
+    }
+    if (action === 'fe-newfile') {
+        const name = prompt('New JSON file name:');
+        if (name) {
+            const fn = name.endsWith('.json') ? name : name + '.json';
+            await createFileOp('', fn);
+        }
+        return;
+    }
+    if (action === 'ft-newfile') {
+        const name = prompt('New JSON file name in "' + t.path + '":');
+        if (name) {
+            const fn = name.endsWith('.json') ? name : name + '.json';
+            await createFileOp(t.path, fn);
+        }
+        return;
+    }
+
+    if (action === 'ft-rename') {
+        startFileTreeRename(t);
+    } else if (action === 'ft-copy') {
+        const fileName = t.path.split('/').pop();
+        const base = fileName.replace(/\.[^.]+$/, '');
+        const ext = fileName.match(/\.[^.]+$/)?.[0] || '.json';
+        const newName = prompt('Copy as:', base + '_copy' + ext);
+        if (newName && newName !== t.path) {
+            const resultStr = await copy_file(t.path, newName);
+            const result = JSON.parse(resultStr);
+            if (result.success) {
+                reloadFullTree();
+            } else {
+                showError(result.error);
+            }
+        }
+    } else if (action === 'ft-delete') {
+        const label = t.type === 'folder' ? 'folder "' + t.path + '"' : 'file "' + t.path + '"';
+        showConfirm('Delete ' + label + '? This cannot be undone.', async () => {
+            const resultStr = await delete_path(t.path);
+            const result = JSON.parse(resultStr);
+            if (result.success) {
+                if (currentFilePath === t.path) {
+                    resetEditorState(null, '', null);
+                }
+                reloadFullTree();
+            } else {
+                showError(result.error);
+            }
+        }, 'Delete');
+    }
+}
+
+async function reloadFullTree() {
+    await loadFileTree(99);
+    setTimeout(() => restoreExpandState(), 80);
+}
+
+async function createFolderOp(parentPath, name) {
+    const resultStr = await create_folder(parentPath, name);
+    const result = JSON.parse(resultStr);
+    if (result.success) {
+        await reloadFullTree();
+    } else {
+        showError(result.error);
+    }
+}
+
+async function createFileOp(parentPath, name) {
+    const resultStr = await create_file(parentPath, name);
+    const result = JSON.parse(resultStr);
+    if (result.success) {
+        await reloadFullTree();
+    } else {
+        showError(result.error);
+    }
+}
+
+function startFileTreeRename(target) {
+    const item = target.itemEl;
+    if (!item) return;
+    const label = item.querySelector('.label');
+    if (!label) return;
+    const oldName = label.textContent;
+    const rect = label.getBoundingClientRect();
+
+    const editDiv = document.getElementById('ft-rename-input');
+    const input = document.getElementById('ft-rename-text');
+    editDiv.style.left = rect.left + 'px';
+    editDiv.style.top = rect.top + 'px';
+    editDiv.classList.remove('hidden');
+    input.value = oldName;
+    input.style.width = Math.max(120, rect.width + 16) + 'px';
+    input.focus();
+    input.select();
+
+    let finishing = false;
+    const finish = async () => {
+        if (finishing) return;
+        finishing = true;
+        input.removeEventListener('blur', onBlur);
+        input.removeEventListener('keydown', onKey);
+        editDiv.classList.add('hidden');
+        const newName = input.value.trim();
+        if (newName && newName !== oldName) {
+            const resultStr = await rename_path(target.path, newName);
+            const result = JSON.parse(resultStr);
+            if (result.success) {
+                if (currentFilePath === target.path) {
+                    const parts = target.path.split('/');
+                    parts[parts.length - 1] = newName;
+                    currentFilePath = parts.join('/');
+                    document.getElementById('file-path-display').textContent = currentFilePath;
+                }
+                reloadFullTree();
+            } else {
+                showError(result.error);
+            }
+        }
+    };
+
+    const onBlur = () => setTimeout(finish, 100);
+    const onKey = (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); finish(); }
+        else if (e.key === 'Escape') { e.preventDefault(); editDiv.classList.add('hidden'); }
+    };
+
+    input.addEventListener('blur', onBlur);
+    input.addEventListener('keydown', onKey);
+}
+
+/* ── End File Tree Context Menu ── */
 
 function canDiscardCurrentChanges() {
     if (isPlainTextMode) return true;

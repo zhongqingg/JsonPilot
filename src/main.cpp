@@ -28,6 +28,11 @@ public:
         win.bind("show_save_dialog", this, &JsonEditorApp::bindShowSaveDialog);
         win.bind("browse_folder", this, &JsonEditorApp::bindBrowseFolder);
         win.bind("set_root_dir", this, &JsonEditorApp::bindSetRootDir);
+        win.bind("create_folder", this, &JsonEditorApp::bindCreateFolder);
+        win.bind("delete_path", this, &JsonEditorApp::bindDeletePath);
+        win.bind("rename_path", this, &JsonEditorApp::bindRenamePath);
+        win.bind("copy_file", this, &JsonEditorApp::bindCopyFile);
+        win.bind("create_file", this, &JsonEditorApp::bindCreateFile);
         win.set_close_handler_wv(closeHandler);
     }
 
@@ -41,7 +46,6 @@ public:
             win.show("");
         }
 
-        // Wait for window HWND to become available and set icon immediately
         for (int i = 0; i < 200 && !iconApplied; i++) {
             setWindowIcon();
             if (!iconApplied) {
@@ -89,6 +93,7 @@ private:
     std::string rootDir;
     std::string theme = "dark";
     std::string configPath;
+    std::string logPath;
     std::vector<std::pair<std::string, std::string>> jsonFiles;
     bool iconApplied = false;
 
@@ -115,9 +120,6 @@ private:
 
         HMODULE hInst = GetModuleHandleA(NULL);
 
-        // LR_DEFAULTSIZE: Windows picks the size matching system DPI settings
-        // from the ICO's embedded resolutions. With a properly multi-resolution
-        // ICO (16..256), each DPI level finds an exact match with no scaling.
         HICON hIcon = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON,
             0, 0, LR_DEFAULTSIZE);
         HICON hIconSmall = (HICON)LoadImageA(hInst, MAKEINTRESOURCE(101), IMAGE_ICON,
@@ -147,8 +149,26 @@ private:
         return ".";
     }
 
+    void logLine(const std::string& message) {
+        if (logPath.empty()) {
+            logPath = getExeDir() + "\\JsonPilot.log";
+        }
+        std::ofstream log(logPath, std::ios::app | std::ios::binary);
+        if (log.is_open()) {
+            log << message << "\n";
+        }
+    }
+
     void loadConfig() {
         std::string exeDir = getExeDir();
+        logPath = exeDir + "\\JsonPilot.log";
+        {
+            std::ofstream log(logPath, std::ios::trunc | std::ios::binary);
+            if (log.is_open()) {
+                log << "JsonPilot debug log\n";
+                log << "exe_dir=" << exeDir << "\n";
+            }
+        }
         std::vector<std::string> candidates = {
             exeDir + "\\config.txt",
             "config.txt",
@@ -191,6 +211,9 @@ private:
             fs::path absPath = base / fs::u8path(rootDir);
             rootDir = fs::absolute(absPath).u8string();
         }
+        logLine("config_path=" + configPath);
+        logLine("root_dir=" + rootDir);
+        logLine("theme=" + theme);
     }
 
     static void trim(std::string& s) {
@@ -204,11 +227,16 @@ private:
 
     void scanJsonFiles() {
         jsonFiles.clear();
+        logLine("scan_start root_dir=" + rootDir);
         if (!fs::exists(fs::u8path(rootDir))) {
-            std::cerr << "Root dir does not exist: " << rootDir << std::endl;
+            logLine("scan_error root dir does not exist");
             return;
         }
         scanDir(fs::u8path(rootDir), "");
+        logLine("scan_done json_count=" + std::to_string(jsonFiles.size()));
+        for (const auto& [relPath, absPath] : jsonFiles) {
+            logLine("json_file rel=" + relPath + " abs=" + absPath);
+        }
     }
 
     void scanDir(const fs::path& dir, const std::string& relativePath) {
@@ -228,8 +256,10 @@ private:
                     }
                 }
             }
-        } catch (const fs::filesystem_error& e) {
+        } catch (const std::exception& e) {
             std::cerr << "Error scanning directory: " << e.what() << std::endl;
+        } catch (...) {
+            std::cerr << "Unknown error scanning directory" << std::endl;
         }
     }
 
@@ -237,21 +267,23 @@ private:
         json tree = json::object();
         for (const auto& [relPath, absPath] : jsonFiles) {
             json* current = &tree;
-            fs::path p = fs::u8path(relPath);
-            std::string accum;
-            for (const auto& part : p) {
-                std::string partStr = part.u8string();
-                if (!accum.empty()) accum += "/";
-                accum += partStr;
-                if (part == p.filename()) {
-                    if (!current->is_object()) {
-                        *current = json::object();
-                    }
+            // Split by '/' manually (avoid fs::path iterator issues)
+            std::vector<std::string> parts;
+            size_t start = 0, pos;
+            while ((pos = relPath.find('/', start)) != std::string::npos) {
+                parts.push_back(relPath.substr(start, pos - start));
+                start = pos + 1;
+            }
+            parts.push_back(relPath.substr(start));
+
+            for (size_t i = 0; i < parts.size(); i++) {
+                const std::string& partStr = parts[i];
+                if (!current->is_object()) {
+                    *current = json::object();
+                }
+                if (i == parts.size() - 1) {
                     (*current)[partStr] = json{{"file", relPath}};
                 } else {
-                    if (!current->is_object()) {
-                        *current = json::object();
-                    }
                     if (!current->contains(partStr)) {
                         (*current)[partStr] = json::object();
                     }
@@ -324,8 +356,11 @@ private:
 
     void bindGetFileTree(webui::window::event* e) {
         scanJsonFiles();
-        json tree = buildFileTreeJson();
-        e->return_string(tree.dump());
+        std::string result;
+        for (const auto& [relPath, absPath] : jsonFiles) {
+            result += relPath + "\n";
+        }
+        e->return_string(result);
     }
 
     void bindLoadFile(webui::window::event* e) {
@@ -341,11 +376,10 @@ private:
                 return;
             }
 
-            // Limit file size to 10 MB to prevent memory issues
             auto fileSize = fs::file_size(fs::u8path(absPath));
             if (fileSize > 10 * 1024 * 1024) {
                 result["success"] = false;
-                result["error"] = "File too large (>10 MB): " + absPath;
+                result["error"] = "File too large (>10 MB)";
                 e->return_string(result.dump());
                 return;
             }
@@ -353,7 +387,7 @@ private:
             std::ifstream f(fs::u8path(absPath), std::ios::binary);
             if (!f.is_open()) {
                 result["success"] = false;
-                result["error"] = "Cannot open file: " + absPath;
+                result["error"] = "Cannot open file";
                 e->return_string(result.dump());
                 return;
             }
@@ -527,11 +561,10 @@ private:
         std::string newRoot = e->get_string(0);
         if (newRoot.empty()) return;
 
-        // Resolve relative paths against config file location
         if (!fs::u8path(newRoot).is_absolute()) {
             fs::path base = fs::path(configPath).parent_path();
             if (base.empty()) base = fs::current_path();
-            fs::path absPath = base / newRoot;
+            fs::path absPath = base / fs::u8path(newRoot);
             newRoot = fs::absolute(absPath).u8string();
         }
 
@@ -546,13 +579,163 @@ private:
         e->return_string(result.dump());
     }
 
+    void bindCreateFolder(webui::window::event* e) {
+        json result;
+        try {
+            std::string parentRelPath = e->get_string(0);
+            std::string folderName = e->get_string(1);
+
+            fs::path parentPath = parentRelPath.empty()
+                ? fs::u8path(rootDir)
+                : fs::u8path(rootDir) / fs::u8path(parentRelPath);
+            fs::path newFolder = parentPath / fs::u8path(folderName);
+
+            std::error_code ec;
+            bool created = fs::create_directory(newFolder, ec);
+            if (created) {
+                scanJsonFiles();
+                json tree = buildFileTreeJson();
+                result["success"] = true;
+                result["tree"] = tree;
+            } else if (fs::exists(newFolder, ec)) {
+                result["success"] = false;
+                result["error"] = "Folder already exists";
+            } else {
+                result["success"] = false;
+                result["error"] = "Cannot create folder: " + ec.message();
+            }
+        } catch (const std::exception& ex) {
+            result["success"] = false;
+            result["error"] = std::string("Error: ") + ex.what();
+        } catch (...) {
+            result["success"] = false;
+            result["error"] = "Unknown error creating folder";
+        }
+        e->return_string(result.dump());
+    }
+
+    void bindCreateFile(webui::window::event* e) {
+        json result;
+        try {
+            std::string parentRelPath = e->get_string(0);
+            std::string fileName = e->get_string(1);
+
+            fs::path parentPath = parentRelPath.empty()
+                ? fs::u8path(rootDir)
+                : fs::u8path(rootDir) / fs::u8path(parentRelPath);
+            fs::path newFile = parentPath / fs::u8path(fileName);
+
+            if (fs::exists(newFile)) {
+                result["success"] = false;
+                result["error"] = "File already exists";
+            } else {
+                std::ofstream f(newFile);
+                if (f.is_open()) {
+                    f << "{}";
+                    f.close();
+                    scanJsonFiles();
+                    json tree = buildFileTreeJson();
+                    result["success"] = true;
+                    result["tree"] = tree;
+                } else {
+                    result["success"] = false;
+                    result["error"] = "Cannot create file";
+                }
+            }
+        } catch (const std::exception& ex) {
+            result["success"] = false;
+            result["error"] = std::string("Error: ") + ex.what();
+        } catch (...) {
+            result["success"] = false;
+            result["error"] = "Unknown error creating file";
+        }
+        e->return_string(result.dump());
+    }
+
+    void bindDeletePath(webui::window::event* e) {
+        std::string relPath = e->get_string(0);
+        json result;
+
+        fs::path targetPath = fs::u8path(rootDir) / fs::u8path(relPath);
+        std::error_code ec;
+        if (fs::exists(targetPath, ec)) {
+            fs::remove_all(targetPath, ec);
+            if (!ec) {
+                scanJsonFiles();
+                json tree = buildFileTreeJson();
+                result["success"] = true;
+                result["tree"] = tree;
+            } else {
+                result["success"] = false;
+                result["error"] = "Cannot delete: " + ec.message();
+            }
+        } else {
+            result["success"] = false;
+            result["error"] = "Path not found";
+        }
+
+        e->return_string(result.dump());
+    }
+
+    void bindRenamePath(webui::window::event* e) {
+        std::string relPath = e->get_string(0);
+        std::string newName = e->get_string(1);
+        json result;
+
+        fs::path oldPath = fs::u8path(rootDir) / fs::u8path(relPath);
+        fs::path newPath = oldPath.parent_path() / fs::u8path(newName);
+
+        std::error_code ec;
+        fs::rename(oldPath, newPath, ec);
+        if (!ec) {
+            scanJsonFiles();
+            json tree = buildFileTreeJson();
+            result["success"] = true;
+            result["tree"] = tree;
+        } else if (fs::exists(newPath, ec)) {
+            result["success"] = false;
+            result["error"] = "A file or folder with that name already exists";
+        } else {
+            result["success"] = false;
+            result["error"] = "Cannot rename: " + ec.message();
+        }
+
+        e->return_string(result.dump());
+    }
+
+    void bindCopyFile(webui::window::event* e) {
+        std::string relPath = e->get_string(0);
+        std::string newName = e->get_string(1);
+        json result;
+
+        fs::path srcPath = fs::u8path(rootDir) / fs::u8path(relPath);
+        fs::path dstPath = srcPath.parent_path() / fs::u8path(newName);
+
+        std::error_code ec;
+        if (fs::exists(dstPath, ec)) {
+            result["success"] = false;
+            result["error"] = "A file with that name already exists";
+        } else {
+            fs::copy_file(srcPath, dstPath, ec);
+            if (!ec) {
+                scanJsonFiles();
+                json tree = buildFileTreeJson();
+                result["success"] = true;
+                result["tree"] = tree;
+            } else {
+                result["success"] = false;
+                result["error"] = "Cannot copy: " + ec.message();
+            }
+        }
+
+        e->return_string(result.dump());
+    }
+
     void saveConfig() {
-        fs::path configAbsPath = fs::absolute(configPath);
         std::ofstream f(configPath);
         if (f.is_open()) {
             f << "root_dir=" << rootDir << "\n";
             f << "theme=" << theme << "\n";
-            f.close();
         }
     }
 

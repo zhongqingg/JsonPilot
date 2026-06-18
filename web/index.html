@@ -22,6 +22,7 @@
             <input type="text" id="path-input" placeholder="Data root path..." title="Root directory for JSON files">
             <button id="btnBrowseFolder" title="Browse for data folder">📂</button>
         </div>
+        <div id="debug-info" style="padding:4px 8px;font-size:11px;color:#f90;background:#222;border-top:1px solid #444;"></div>
         <div id="file-tree"></div>
     </div>
     <div id="main-content">
@@ -82,6 +83,23 @@
     <div class="menu-separator"></div>
     <div class="menu-item" data-action="replace-scope">Replace in Current Scope</div>
     <div class="menu-item" data-action="replace-global">Replace Globally</div>
+</div>
+
+<div id="filetree-menu" class="context-menu hidden">
+    <div class="menu-item" data-action="ft-rename">Rename</div>
+    <div class="menu-item" data-action="ft-copy">Copy</div>
+    <div class="menu-item" data-action="ft-newfile">New JSON File</div>
+    <div class="menu-separator"></div>
+    <div class="menu-item" data-action="ft-delete">Delete</div>
+</div>
+
+<div id="filetree-empty-menu" class="context-menu hidden">
+    <div class="menu-item" data-action="fe-newfolder">New Folder</div>
+    <div class="menu-item" data-action="fe-newfile">New JSON File</div>
+</div>
+
+<div id="ft-rename-input" class="ft-inline-edit hidden">
+    <input type="text" id="ft-rename-text">
 </div>
 
 <div id="confirm-dialog" class="dialog-overlay hidden">

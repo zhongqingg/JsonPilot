@@ -994,3 +994,23 @@ body {
 #plain-text-content:focus {
     border-color: var(--border-focus);
 }
+
+/* File tree inline rename */
+.ft-inline-edit {
+    position: fixed;
+    background: var(--bg-input);
+    border: 2px solid var(--border-focus);
+    border-radius: 3px;
+    z-index: 1500;
+    padding: 2px 4px;
+}
+
+.ft-inline-edit input {
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    min-width: 120px;
+}
