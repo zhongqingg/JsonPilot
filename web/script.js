@@ -827,7 +827,12 @@ async function loadFileTree(retryCount) {
             setTimeout(() => loadFileTree(retryCount + 1), 300);
         }
     } catch (err) {
-        debugLog("ERROR: " + err.message);
+        if (retryCount === 0) {
+            // First call may fail if bridge not yet ready — retry silently
+            debugLog("Bridge not ready, retrying...");
+        } else {
+            debugLog("ERROR: " + err.message);
+        }
         if (retryCount < 3) {
             setTimeout(() => loadFileTree(retryCount + 1), 500);
         }
@@ -888,6 +893,7 @@ function renderFileTree(node, container, basePath, parentItem, clearContainer = 
                     if (children) {
                         const collapsed = children.classList.toggle("hidden");
                         icon.textContent = collapsed ? "\uD83D\uDCC1" : "\uD83D\uDCC2";
+                        saveExpandState(itemPath, !collapsed);
                     }
                 });
             }
@@ -1070,6 +1076,25 @@ async function handleFileTreeAction(t, action) {
             }
         }, 'Delete');
     }
+}
+
+let folderExpandState = {};
+function restoreExpandState() {
+    document.querySelectorAll('#file-tree .file-tree-item.folder').forEach(item => {
+        const path = item.dataset.path;
+        if (path && folderExpandState[path]) {
+            const children = item.nextElementSibling;
+            if (children && children.classList.contains('file-tree-children')) {
+                children.classList.remove('hidden');
+                const icon = item.querySelector('.icon');
+                if (icon) icon.textContent = '📂';
+            }
+        }
+    });
+}
+function saveExpandState(path, expanded) {
+    if (expanded) folderExpandState[path] = true;
+    else delete folderExpandState[path];
 }
 
 async function reloadFullTree() {
