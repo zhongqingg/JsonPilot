@@ -220,6 +220,7 @@ private:
                     : relativePath + "/" + entry.path().filename().u8string();
 
                 if (entry.is_directory()) {
+                    jsonFiles.emplace_back(rel + "/", std::string(""));
                     scanDir(entry.path(), rel);
                 } else if (entry.is_regular_file()) {
                     std::string ext = entry.path().extension().u8string();

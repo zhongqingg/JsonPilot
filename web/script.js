@@ -797,13 +797,19 @@ async function loadFileTree(retryCount) {
         const paths = text.trim().split('\n').filter(p => p);
         // Build tree from flat path list on the JS side
         const tree = {};
-        for (const relPath of paths) {
+        for (let relPath of paths) {
+            const isDir = relPath.endsWith('/');
+            if (isDir) relPath = relPath.slice(0, -1);
             const parts = relPath.split('/');
             let node = tree;
             for (let i = 0; i < parts.length; i++) {
                 const key = parts[i];
                 if (i === parts.length - 1) {
-                    node[key] = { file: relPath };
+                    if (!isDir) {
+                        node[key] = { file: relPath };
+                    } else if (!node[key]) {
+                        node[key] = {};
+                    }
                 } else {
                     if (!node[key]) node[key] = {};
                     if (node[key].file) {
