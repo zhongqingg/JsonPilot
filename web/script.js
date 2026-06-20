@@ -1016,24 +1016,27 @@ async function handleFileTreeAction(t, action) {
     if (!t) return;
 
     if (action === 'fe-newfolder') {
-        const name = prompt('New folder name:');
-        if (name) await createFolderOp('', name);
+        showPrompt('New Folder', '', async (name) => {
+            if (name) await createFolderOp('', name);
+        });
         return;
     }
     if (action === 'fe-newfile') {
-        const name = prompt('New JSON file name:');
-        if (name) {
-            const fn = name.endsWith('.json') ? name : name + '.json';
-            await createFileOp('', fn);
-        }
+        showPrompt('New JSON File', '', async (name) => {
+            if (name) {
+                const fn = name.endsWith('.json') ? name : name + '.json';
+                await createFileOp('', fn);
+            }
+        });
         return;
     }
     if (action === 'ft-newfile') {
-        const name = prompt('New JSON file name in "' + t.path + '":');
-        if (name) {
-            const fn = name.endsWith('.json') ? name : name + '.json';
-            await createFileOp(t.path, fn);
-        }
+        showPrompt('New JSON File', '', async (name) => {
+            if (name) {
+                const fn = name.endsWith('.json') ? name : name + '.json';
+                await createFileOp(t.path, fn);
+            }
+        });
         return;
     }
 
@@ -1043,16 +1046,17 @@ async function handleFileTreeAction(t, action) {
         const fileName = t.path.split('/').pop();
         const base = fileName.replace(/\.[^.]+$/, '');
         const ext = fileName.match(/\.[^.]+$/)?.[0] || '.json';
-        const newName = prompt('Copy as:', base + '_copy' + ext);
-        if (newName && newName !== t.path) {
-            const resultStr = await copy_file(t.path, newName);
-            const result = JSON.parse(resultStr);
-            if (result.success) {
-                reloadFullTree();
-            } else {
-                showError(result.error);
+        showPrompt('Copy File', base + '_copy' + ext, async (newName) => {
+            if (newName && newName !== fileName) {
+                const resultStr = await copy_file(t.path, newName);
+                const result = JSON.parse(resultStr);
+                if (result.success) {
+                    reloadFullTree();
+                } else {
+                    showError(result.error);
+                }
             }
-        }
+        });
     } else if (action === 'ft-delete') {
         const label = t.type === 'folder' ? 'folder "' + t.path + '"' : 'file "' + t.path + '"';
         showConfirm('Delete ' + label + '? This cannot be undone.', async () => {
@@ -1958,6 +1962,30 @@ function showConfirm(message, callback, okText) {
     document.getElementById("confirm-ok").textContent = okText || "OK";
     document.getElementById("confirm-dialog").classList.remove("hidden");
     confirmCallback = callback;
+}
+
+function showPrompt(title, defaultValue, callback) {
+    document.getElementById("prompt-title").textContent = title;
+    const input = document.getElementById("prompt-input");
+    input.value = defaultValue || "";
+    document.getElementById("prompt-dialog").classList.remove("hidden");
+    setTimeout(() => input.focus(), 50);
+
+    const ok = () => {
+        document.getElementById("prompt-dialog").classList.add("hidden");
+        callback(input.value.trim());
+    };
+    const cancel = () => {
+        document.getElementById("prompt-dialog").classList.add("hidden");
+        callback(null);
+    };
+
+    document.getElementById("prompt-ok").onclick = ok;
+    document.getElementById("prompt-cancel").onclick = cancel;
+    input.onkeydown = (e) => {
+        if (e.key === "Enter") ok();
+        else if (e.key === "Escape") cancel();
+    };
 }
 
 function hideConfirm() {
