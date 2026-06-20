@@ -952,6 +952,7 @@ function showFileTreeMenu(x, y, target) {
     // Show/hide items based on target type
     menu.querySelector('[data-action="ft-rename"]').style.display = 'none';
     menu.querySelector('[data-action="ft-copy"]').style.display = 'none';
+    menu.querySelector('[data-action="ft-newfolder"]').style.display = 'none';
     menu.querySelector('[data-action="ft-newfile"]').style.display = 'none';
     menu.querySelector('[data-action="ft-delete"]').style.display = 'none';
 
@@ -961,6 +962,7 @@ function showFileTreeMenu(x, y, target) {
         menu.querySelector('[data-action="ft-delete"]').style.display = '';
     } else if (target.type === 'folder') {
         menu.querySelector('[data-action="ft-rename"]').style.display = '';
+        menu.querySelector('[data-action="ft-newfolder"]').style.display = '';
         menu.querySelector('[data-action="ft-newfile"]').style.display = '';
         menu.querySelector('[data-action="ft-delete"]').style.display = '';
     }
@@ -1027,6 +1029,12 @@ async function handleFileTreeAction(t, action) {
                 const fn = name.endsWith('.json') ? name : name + '.json';
                 await createFileOp('', fn);
             }
+        });
+        return;
+    }
+    if (action === 'ft-newfolder') {
+        showPrompt('New Folder', '', async (name) => {
+            if (name) await createFolderOp(t.path, name);
         });
         return;
     }
