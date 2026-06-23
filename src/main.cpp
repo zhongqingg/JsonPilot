@@ -9,9 +9,167 @@
 #include <windows.h>
 #include <shobjidl.h>
 #include <comdef.h>
+#include <oleidl.h>
+#include <ctime>
+#include <sstream>
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
+
+static void logDebug(const char* msg) {
+    std::time_t t = std::time(nullptr);
+    char buf[32] = {};
+    std::strftime(buf, sizeof(buf), "%H:%M:%S", std::localtime(&t));
+    std::string line = std::string("[") + buf + "] " + msg + "\n";
+    std::cout << line;
+    OutputDebugStringA(line.c_str());
+    std::ofstream log("JsonPilot_debug.log", std::ios::app);
+    if (log.is_open()) { log << line; log.close(); }
+}
+
+#define WM_SETUP_DRAGDROP (WM_APP + 1)
+
+static std::string* g_subclassDropPath = NULL;
+static webui::window* g_subclassWin = NULL;
+
+// --- COM IDropTarget ---
+class FileDropTarget : public IDropTarget {
+private:
+    LONG m_refCount = 1;
+    std::string* m_outPath;
+    webui::window* m_win;
+public:
+    FileDropTarget(std::string* outPath, webui::window* win) : m_outPath(outPath), m_win(win) {}
+    virtual ~FileDropTarget() {}
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == IID_IUnknown || riid == IID_IDropTarget) { *ppv = this; AddRef(); return S_OK; }
+        *ppv = NULL; return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&m_refCount); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        LONG r = InterlockedDecrement(&m_refCount);
+        if (r == 0) delete this;
+        return r;
+    }
+    HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* pDataObj, DWORD, POINTL, DWORD* pdwEffect) override {
+        FORMATETC fmt = { CF_HDROP, NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+        *pdwEffect = SUCCEEDED(pDataObj->QueryGetData(&fmt)) ? DROPEFFECT_COPY : DROPEFFECT_NONE;
+        logDebug(*pdwEffect == DROPEFFECT_COPY ? "[OLE_Enter] Accepting" : "[OLE_Enter] Rejecting");
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL, DWORD* pdwEffect) override { *pdwEffect = DROPEFFECT_COPY; return S_OK; }
+    HRESULT STDMETHODCALLTYPE DragLeave() override { logDebug("[OLE_Leave] DragLeave called"); return S_OK; }
+    HRESULT STDMETHODCALLTYPE Drop(IDataObject* pDataObj, DWORD, POINTL, DWORD* pdwEffect) override {
+        *pdwEffect = DROPEFFECT_NONE;
+        FORMATETC fmt = { CF_HDROP, NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
+        STGMEDIUM med = {};
+        logDebug("[OLE_Drop] Drop() called");
+        if (FAILED(pDataObj->GetData(&fmt, &med))) { logDebug("[OLE_Drop] GetData failed"); return S_OK; }
+        HDROP hDrop = (HDROP)GlobalLock(med.hGlobal);
+        if (!hDrop) { ReleaseStgMedium(&med); logDebug("[OLE_Drop] GlobalLock failed"); return S_OK; }
+        UINT count = DragQueryFileW(hDrop, 0xFFFFFFFF, NULL, 0);
+        logDebug(("[OLE_Drop] fileCount=" + std::to_string(count)).c_str());
+        for (UINT i = 0; i < count; i++) {
+            wchar_t path[MAX_PATH] = {};
+            DragQueryFileW(hDrop, i, path, MAX_PATH);
+            std::wstring ws(path);
+            int utf8len = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, NULL, 0, NULL, NULL);
+            std::string utf8path;
+            if (utf8len > 0) { utf8path.resize(utf8len - 1); WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, &utf8path[0], utf8len, NULL, NULL); }
+            logDebug(("[OLE_Drop] file=" + utf8path).c_str());
+            size_t len = ws.size();
+            if (len >= 5 && _wcsicmp(ws.c_str() + len - 5, L".json") == 0) {
+                int l = WideCharToMultiByte(CP_UTF8, 0, path, -1, NULL, 0, NULL, NULL);
+                if (l > 0) {
+                    m_outPath->resize(l - 1);
+                    WideCharToMultiByte(CP_UTF8, 0, path, -1, &(*m_outPath)[0], l, NULL, NULL);
+                    logDebug(("[OLE_Drop] SAVED path=" + *m_outPath).c_str());
+                    // Read file content in C++ and push directly to frontend
+                    // (HTML5 drop event won't fire since we replaced WebView2's OLE handler)
+                    try {
+                        std::ifstream f(fs::u8path(*m_outPath), std::ios::binary);
+                        if (f.is_open()) {
+                            std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+                            f.close();
+                            // Escape for JSON (safe for JS eval)
+                            auto jsonEscape = [](const std::string& s) {
+                                std::string r; r.reserve(s.size() + 8); r += '"';
+                                for (char c : s) {
+                                    if (c == '"') r += "\\\"";
+                                    else if (c == '\\') r += "\\\\";
+                                    else if (c == '\n') r += "\\n";
+                                    else if (c == '\r') r += "\\r";
+                                    else if (c == '\t') r += "\\t";
+                                    else r += c;
+                                }
+                                r += '"';
+                                return r;
+                            };
+                            std::string js = "openDroppedFile(" + jsonEscape(*m_outPath) + "," + jsonEscape(content) + ")";
+                            logDebug("[OLE_Drop] Pushing to frontend via win.run()");
+                            m_win->run(js);
+                        } else {
+                            logDebug("[OLE_Drop] Cannot open dropped file for reading");
+                        }
+                    } catch (const std::exception& e) {
+                        logDebug(("[OLE_Drop] Exception reading file: " + std::string(e.what())).c_str());
+                    }
+                }
+                break;
+            }
+        }
+        GlobalUnlock(med.hGlobal);
+        ReleaseStgMedium(&med);
+        *pdwEffect = DROPEFFECT_COPY;
+        return S_OK;
+    }
+};
+
+// Subclass proc for the main window — runs on webui thread (where window lives)
+// Handles WM_SETUP_DRAGDROP to set up OLE + DragAcceptFiles on correct thread
+static LRESULT CALLBACK MainWndSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    if (msg == WM_SETUP_DRAGDROP) {
+        logDebug("[WNDPROC] WM_SETUP_DRAGDROP received — setting up drag-drop on webui thread");
+        HRESULT hrOle = OleInitialize(NULL);
+        logDebug(("[WNDPROC] OleInitialize hr=0x" + std::to_string(static_cast<long>(hrOle))).c_str());
+        if (g_subclassDropPath) {
+            FileDropTarget* target = new FileDropTarget(g_subclassDropPath, g_subclassWin);
+            HRESULT hr = RegisterDragDrop(hwnd, target);
+            logDebug(("[WNDPROC] RegisterDragDrop(main) hr=0x" + std::to_string(static_cast<long>(hr))).c_str());
+        }
+        for (int r = 0; r < 100; r++) {
+            HWND childWV1 = NULL, childRHW = NULL;
+            EnumChildWindows(hwnd, [](HWND h, LPARAM lp) -> BOOL {
+                auto* results = reinterpret_cast<HWND*>(lp);
+                wchar_t cls[128] = {}; GetClassNameW(h, cls, 128);
+                if (wcscmp(cls, L"Chrome_WidgetWin_1") == 0) results[0] = h;
+                if (wcscmp(cls, L"Chrome_RenderWidgetHostHWND") == 0) results[1] = h;
+                return TRUE;
+            }, reinterpret_cast<LPARAM>(&childWV1));
+            if (childWV1 || childRHW) {
+                if (childWV1) {
+                    RevokeDragDrop(childWV1);
+                    FileDropTarget* t2 = new FileDropTarget(g_subclassDropPath, g_subclassWin);
+                    RegisterDragDrop(childWV1, t2);
+                    logDebug("[WNDPROC] Registered on Chrome_WidgetWin_1");
+                }
+                if (childRHW) {
+                    RevokeDragDrop(childRHW);
+                    FileDropTarget* t3 = new FileDropTarget(g_subclassDropPath, g_subclassWin);
+                    RegisterDragDrop(childRHW, t3);
+                    logDebug("[WNDPROC] Registered on Chrome_RenderWidgetHostHWND");
+                }
+                break;
+            }
+            Sleep(30);
+        }
+        logDebug("[WNDPROC] Drag-drop setup complete");
+        return 0;
+    }
+    WNDPROC oldMain = (WNDPROC)GetPropW(hwnd, L"OLD_MAIN_PROC");
+    if (oldMain) return CallWindowProcW(oldMain, hwnd, msg, wParam, lParam);
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
 
 class JsonEditorApp {
 public:
@@ -33,17 +191,46 @@ public:
         win.bind("rename_path", this, &JsonEditorApp::bindRenamePath);
         win.bind("copy_file", this, &JsonEditorApp::bindCopyFile);
         win.bind("create_file", this, &JsonEditorApp::bindCreateFile);
+        win.bind("get_last_drop_path", this, &JsonEditorApp::bindGetDropPath);
         win.set_close_handler_wv(closeHandler);
     }
 
     void run() {
         std::string webPath = resolveWebPath();
-        std::cout << "Serving web folder: " << webPath << std::endl;
-        std::cout << "JSON root dir: " << rootDir << std::endl;
+        logDebug(("[INIT] Serving web folder: " + webPath).c_str());
+        logDebug(("[INIT] JSON root dir: " + rootDir).c_str());
 
         win.set_root_folder(webPath);
         if (!win.show_wv("")) {
             win.show("");
+        }
+
+        // --- Drag-drop capture setup ---
+        // CRITICAL: webui creates the window on a separate thread (webui thread).
+        // OLE RegisterDragDrop and OleInitialize MUST run on that same thread.
+        // We use SendMessage + subclass to execute setup on the correct thread.
+        logDebug("[INIT] === Setting up drag-drop capture (on webui thread) ===");
+
+        // Wait for main HWND
+        for (int r = 0; r < 200 && !m_hWnd; r++) {
+            m_hWnd = (HWND)win.win32_get_hwnd();
+            if (!m_hWnd) Sleep(30);
+        }
+        if (!m_hWnd) {
+            logDebug("[INIT] FAILED to get HWND");
+        } else {
+            logDebug(("[INIT] Got HWND=" + std::to_string(reinterpret_cast<uintptr_t>(m_hWnd))).c_str());
+            // Store pointers for subclass proc
+            g_subclassDropPath = &m_dropPath;
+            g_subclassWin = &win;
+            SetPropW(m_hWnd, L"DROP_PATH_PTR", &m_dropPath);
+            // Subclass main window and send message to set up drag-drop on webui thread
+            WNDPROC oldMain = (WNDPROC)SetWindowLongPtrW(m_hWnd, GWLP_WNDPROC, (LONG_PTR)MainWndSubclassProc);
+            SetPropW(m_hWnd, L"OLD_MAIN_PROC", oldMain);
+            // SendMessage will be processed by the webui thread's message loop
+            // Our MainWndSubclassProc will handle WM_SETUP_DRAGDROP and set up OLE/DragAcceptFiles
+            SendMessageW(m_hWnd, WM_SETUP_DRAGDROP, 0, 0);
+            logDebug("[INIT] Drag-drop setup complete");
         }
 
         for (int i = 0; i < 200 && !iconApplied; i++) {
@@ -95,6 +282,9 @@ private:
     std::string configPath;
     std::vector<std::pair<std::string, std::string>> jsonFiles;
     bool iconApplied = false;
+    HWND m_hWnd = NULL;
+    FileDropTarget* m_dropTarget = NULL;
+    std::string m_dropPath;
 
     std::string resolveWebPath() {
         std::string exeDir = getExeDir();
@@ -370,7 +560,12 @@ private:
 
         json result;
         if (absPath.empty()) {
-            absPath = (fs::u8path(rootDir) / fs::u8path(relPath)).u8string();
+            fs::path p = fs::u8path(relPath);
+            if (p.is_absolute()) {
+                absPath = relPath;
+            } else {
+                absPath = (fs::u8path(rootDir) / p).u8string();
+            }
         }
 
         try {
@@ -684,6 +879,12 @@ private:
         }
 
         e->return_string(result.dump());
+    }
+
+    void bindGetDropPath(webui::window::event* e) {
+        logDebug(("[FRONTEND] bindGetDropPath called, returning: " + m_dropPath).c_str());
+        e->return_string(m_dropPath);
+        m_dropPath.clear();
     }
 
     void saveConfig() {

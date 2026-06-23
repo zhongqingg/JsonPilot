@@ -1191,6 +1191,17 @@ function has_unsaved_changes() {
     return modified ? 1 : 0;
 }
 
+// Called from C++ when a file is dropped via OLE drag-drop
+// The HTML5 drop event doesn't fire because we replaced WebView2's OLE handler
+function openDroppedFile(path, content) {
+    try {
+        const data = JSON.parse(content);
+        resetEditorState(data, path, null);
+    } catch (err) {
+        showError("Error loading dropped file: " + err.message);
+    }
+}
+
 function setupDragAndDrop() {
     window.addEventListener("dragover", (e) => {
         e.preventDefault();
@@ -1207,7 +1218,15 @@ function setupDragAndDrop() {
         try {
             const text = await file.text();
             const data = JSON.parse(text);
-            resetEditorState(data, file.name, null);
+            // Try to get the full absolute path from C++ backend
+            let filePath = file.name;
+            try {
+                const dropPath = await get_last_drop_path();
+                if (dropPath && dropPath.length > 0) {
+                    filePath = dropPath;
+                }
+            } catch (_) {}
+            resetEditorState(data, filePath, null);
         } catch (err) {
             showError("Error loading dropped file: " + err.message);
         }
