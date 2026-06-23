@@ -2069,7 +2069,7 @@ function showSaveAsDialog() {
 
 async function onBrowseSaveAs() {
     try {
-        const path = await show_save_dialog();
+        const path = await show_save_dialog(currentFilePath);
         if (path) {
             document.getElementById("save-as-path").value = path;
         }

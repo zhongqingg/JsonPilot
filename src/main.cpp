@@ -429,6 +429,15 @@ private:
 
     void bindShowSaveDialog(webui::window::event* e) {
         std::string result;
+        std::string currentPath = e->get_string(0);
+        // Use parent directory of current file as default folder if available
+        std::string initDir;
+        if (!currentPath.empty()) {
+            fs::path p = fs::u8path(currentPath);
+            if (p.has_parent_path()) initDir = p.parent_path().u8string();
+        }
+        if (initDir.empty()) initDir = rootDir;
+
         HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
         if (SUCCEEDED(hr)) {
             IFileSaveDialog* pDlg = NULL;
@@ -439,8 +448,8 @@ private:
                 pDlg->SetFileTypes(2, fileTypes);
                 pDlg->SetDefaultExtension(L"json");
                 pDlg->SetTitle(L"Save JSON File");
-                if (!rootDir.empty()) {
-                    std::wstring wRoot = fs::u8path(rootDir).wstring();
+                if (!initDir.empty()) {
+                    std::wstring wRoot = fs::u8path(initDir).wstring();
                     IShellItem* pFolder = NULL;
                     HRESULT hr2 = SHCreateItemFromParsingName(wRoot.c_str(), NULL, IID_PPV_ARGS(&pFolder));
                     if (SUCCEEDED(hr2) && pFolder) {
