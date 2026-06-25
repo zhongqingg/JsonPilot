@@ -173,9 +173,29 @@ static LRESULT CALLBACK MainWndSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, 
 
 class JsonEditorApp {
 public:
-    JsonEditorApp() {
-        loadConfig();
-        scanJsonFiles();
+    JsonEditorApp(const std::string& singleFilePath = "") {
+        m_singleFilePath = singleFilePath;
+        if (!m_singleFilePath.empty()) {
+            fs::path p = fs::u8path(m_singleFilePath);
+            if (!p.is_absolute()) {
+                p = fs::absolute(p);
+                m_singleFilePath = p.u8string();
+            }
+            if (fs::exists(p)) {
+                m_singleFileMode = true;
+                rootDir = p.parent_path().u8string();
+                logDebug(("[MODE] Single-file mode: " + m_singleFilePath).c_str());
+                logDebug(("[MODE] rootDir set to: " + rootDir).c_str());
+            } else {
+                logDebug(("[MODE] File not found, falling back to normal mode: " + m_singleFilePath).c_str());
+                m_singleFilePath.clear();
+            }
+        }
+
+        if (!m_singleFileMode) {
+            loadConfig();
+            scanJsonFiles();
+        }
 
         win.bind("get_file_tree", this, &JsonEditorApp::bindGetFileTree);
         win.bind("load_file", this, &JsonEditorApp::bindLoadFile);
@@ -192,6 +212,7 @@ public:
         win.bind("copy_file", this, &JsonEditorApp::bindCopyFile);
         win.bind("create_file", this, &JsonEditorApp::bindCreateFile);
         win.bind("get_last_drop_path", this, &JsonEditorApp::bindGetDropPath);
+        win.bind("get_app_mode", this, &JsonEditorApp::bindGetAppMode);
         win.bind("log", this, &JsonEditorApp::bindLog);
         win.set_close_handler_wv(closeHandler);
     }
@@ -200,6 +221,11 @@ public:
         std::string webPath = resolveWebPath();
         logDebug(("[INIT] Serving web folder: " + webPath).c_str());
         logDebug(("[INIT] JSON root dir: " + rootDir).c_str());
+        if (m_singleFileMode) {
+            logDebug(("[INIT] Mode: single-file, target: " + m_singleFilePath).c_str());
+        } else {
+            logDebug("[INIT] Mode: directory-browser");
+        }
 
         win.set_root_folder(webPath);
         if (!win.show_wv("")) {
@@ -282,6 +308,8 @@ private:
     std::string theme = "dark";
     std::string configPath;
     std::vector<std::pair<std::string, std::string>> jsonFiles;
+    bool m_singleFileMode = false;
+    std::string m_singleFilePath;
     bool iconApplied = false;
     HWND m_hWnd = NULL;
     FileDropTarget* m_dropTarget = NULL;
@@ -492,6 +520,10 @@ private:
     }
 
     void bindGetFileTree(webui::window::event* e) {
+        if (m_singleFileMode) {
+            e->return_string("");
+            return;
+        }
         scanJsonFiles();
         std::string result;
         for (const auto& [relPath, absPath] : jsonFiles) {
@@ -503,12 +535,23 @@ private:
     void bindLoadFile(webui::window::event* e) {
         json result;
         try {
-            std::string relPath = e->get_string(0);
-            std::string absPath = findAbsPath(relPath);
+            std::string path = e->get_string(0);
+            std::string absPath;
+
+            if (m_singleFileMode && !m_singleFilePath.empty()) {
+                absPath = m_singleFilePath;
+                logDebug(("[LOAD] Single-file mode, using: " + absPath).c_str());
+            } else {
+                absPath = findAbsPath(path);
+                if (absPath.empty() && fs::exists(fs::u8path(path))) {
+                    absPath = fs::absolute(fs::u8path(path)).u8string();
+                    logDebug(("[LOAD] Using absolute path: " + absPath).c_str());
+                }
+            }
 
             if (absPath.empty()) {
                 result["success"] = false;
-                result["error"] = "File not found: " + relPath;
+                result["error"] = "File not found: " + path;
                 e->return_string(result.dump());
                 return;
             }
@@ -544,12 +587,12 @@ private:
                 json data = json::parse(content);
                 result["success"] = true;
                 result["data"] = data;
-                result["path"] = relPath;
+                result["path"] = path;
             } catch (...) {
                 result["success"] = true;
                 result["invalid_json"] = true;
                 result["raw_text"] = content;
-                result["path"] = relPath;
+                result["path"] = path;
                 result["error"] = "Invalid JSON format - showing as plain text";
             }
         } catch (const std::exception& ex) {
@@ -903,6 +946,14 @@ private:
         logDebug(("[FRONTEND][" + level + "] " + msg).c_str());
     }
 
+    void bindGetAppMode(webui::window::event* e) {
+        json result;
+        result["singleFile"] = m_singleFileMode;
+        result["filePath"] = m_singleFilePath;
+        logDebug(("[MODE] get_app_mode: singleFile=" + std::to_string(m_singleFileMode) + " path=" + m_singleFilePath).c_str());
+        e->return_string(result.dump());
+    }
+
     void saveConfig() {
         std::ofstream f(configPath);
         if (f.is_open()) {
@@ -929,7 +980,23 @@ bool JsonEditorApp::forceClosing = false;
 bool JsonEditorApp::closeRequested = false;
 
 int main() {
-    JsonEditorApp app;
+    std::string filePath;
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (argv) {
+        if (argc > 1) {
+            int len = WideCharToMultiByte(CP_UTF8, 0, argv[1], -1, NULL, 0, NULL, NULL);
+            if (len > 0) {
+                filePath.resize(len - 1);
+                WideCharToMultiByte(CP_UTF8, 0, argv[1], -1, &filePath[0], len, NULL, NULL);
+            }
+        }
+        LocalFree(argv);
+    }
+
+    logDebug(("[MAIN] argc=" + std::to_string(argc) + " filePath=" + filePath).c_str());
+
+    JsonEditorApp app(filePath);
     app.run();
     return 0;
 }

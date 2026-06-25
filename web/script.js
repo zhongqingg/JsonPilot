@@ -592,11 +592,57 @@ function executeReplace() {
     restoreExpandedState(state);
 }
 
+async function getAppModeWithRetry(retries = 10, delay = 300) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const modeStr = await get_app_mode();
+            if (modeStr) return JSON.parse(modeStr);
+        } catch (e) {
+            if (i === retries - 1) throw e;
+            await new Promise(r => setTimeout(r, delay));
+        }
+    }
+    return { singleFile: false, filePath: "" };
+}
+
 async function init() {
     await applyConfigTheme();
-    await populateRootPath();
-    await new Promise(r => setTimeout(r, 200));
-    await loadFileTree();
+
+    let appMode = { singleFile: false, filePath: "" };
+    try {
+        appMode = await getAppModeWithRetry();
+        console.log("[INIT] app_mode:", appMode);
+    } catch (e) {
+        console.warn("[INIT] Failed to get app mode:", e);
+    }
+
+    if (appMode.singleFile && appMode.filePath) {
+        document.getElementById("sidebar").style.display = "none";
+        document.getElementById("empty-state").textContent = "Loading file...";
+        console.log("[INIT] Single-file mode, loading:", appMode.filePath);
+        try {
+            const resultStr = await load_file(appMode.filePath);
+            const result = JSON.parse(resultStr);
+            if (result.success) {
+                if (result.invalid_json) {
+                    resetEditorState(null, appMode.filePath, null, true, result.raw_text, result.error);
+                } else {
+                    resetEditorState(result.data, appMode.filePath, null, false);
+                }
+                document.getElementById("empty-state").textContent = "Select a JSON file from the left panel";
+            } else {
+                document.getElementById("empty-state").textContent = "Error: " + (result.error || "Failed to load file");
+                console.error("[INIT] load_file failed:", result.error);
+            }
+        } catch (err) {
+            document.getElementById("empty-state").textContent = "Error loading file";
+            console.error("[INIT] load_file exception:", err);
+        }
+    } else {
+        await populateRootPath();
+        await new Promise(r => setTimeout(r, 200));
+        await loadFileTree();
+    }
 
     // File tree empty-space right-click: show menu
     document.getElementById("file-tree").addEventListener("contextmenu", (e) => {
