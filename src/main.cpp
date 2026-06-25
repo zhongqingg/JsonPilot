@@ -192,6 +192,7 @@ public:
         win.bind("copy_file", this, &JsonEditorApp::bindCopyFile);
         win.bind("create_file", this, &JsonEditorApp::bindCreateFile);
         win.bind("get_last_drop_path", this, &JsonEditorApp::bindGetDropPath);
+        win.bind("log", this, &JsonEditorApp::bindLog);
         win.set_close_handler_wv(closeHandler);
     }
 
@@ -894,6 +895,12 @@ private:
         logDebug(("[FRONTEND] bindGetDropPath called, returning: " + m_dropPath).c_str());
         e->return_string(m_dropPath);
         m_dropPath.clear();
+    }
+
+    void bindLog(webui::window::event* e) {
+        std::string level = e->get_string(0);
+        std::string msg = e->get_string(1);
+        logDebug(("[FRONTEND][" + level + "] " + msg).c_str());
     }
 
     void saveConfig() {

@@ -6,6 +6,40 @@ let plainTextContent = null;
 let confirmCallback = null;
 let diffData = { modified: {}, added: {}, deleted: {} };
 
+const _origConsoleLog = console.log;
+const _origConsoleWarn = console.warn;
+const _origConsoleError = console.error;
+const _logQueue = [];
+let _logBindingReady = false;
+function _flushLogQueue() {
+    while (_logQueue.length) {
+        const [level, msg] = _logQueue.shift();
+        log(level, msg).catch(() => {});
+    }
+}
+function _logToBackend(level, args) {
+    const msg = args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ");
+    if (typeof log === "function") {
+        if (!_logBindingReady) { _logBindingReady = true; _flushLogQueue(); }
+        log(level, msg).catch(() => {});
+    } else {
+        _logQueue.push([level, msg]);
+        if (!_logBindingReady) setTimeout(() => { if (typeof log === "function") { _logBindingReady = true; _flushLogQueue(); } }, 500);
+    }
+}
+console.log = function(...args) {
+    _origConsoleLog.apply(console, args);
+    _logToBackend("log", args);
+};
+console.warn = function(...args) {
+    _origConsoleWarn.apply(console, args);
+    _logToBackend("warn", args);
+};
+console.error = function(...args) {
+    _origConsoleError.apply(console, args);
+    _logToBackend("error", args);
+};
+
 const undoStack = [];
 const redoStack = [];
 const maxUndoDepth = 50;
