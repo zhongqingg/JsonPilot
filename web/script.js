@@ -606,37 +606,58 @@ async function getAppModeWithRetry(retries = 10, delay = 300) {
 }
 
 async function init() {
-    await applyConfigTheme();
-
-    let appMode = { singleFile: false, filePath: "" };
-    try {
-        appMode = await getAppModeWithRetry();
-        console.log("[INIT] app_mode:", appMode);
-    } catch (e) {
-        console.warn("[INIT] Failed to get app mode:", e);
+    // Check for __pilotMode injected directly into HTML (zero-delay path)
+    let appMode = window.__pilotMode || null;
+    if (appMode) {
+        console.log("[INIT] app_mode from __pilotMode:", appMode);
+        delete window.__pilotMode;
+    } else {
+        // Fallback: retry via WebUI binding (WebSocket needed)
+        try {
+            appMode = await getAppModeWithRetry();
+            console.log("[INIT] app_mode from binding:", appMode);
+        } catch (e) {
+            console.warn("[INIT] Failed to get app mode:", e);
+        }
     }
+    if (!appMode) appMode = { singleFile: false, filePath: "" };
+
+    await applyConfigTheme();
 
     if (appMode.singleFile && appMode.filePath) {
         document.getElementById("sidebar").style.display = "none";
-        document.getElementById("empty-state").textContent = "Loading file...";
-        console.log("[INIT] Single-file mode, loading:", appMode.filePath);
-        try {
-            const resultStr = await load_file(appMode.filePath);
-            const result = JSON.parse(resultStr);
-            if (result.success) {
-                if (result.invalid_json) {
-                    resetEditorState(null, appMode.filePath, null, true, result.raw_text, result.error);
-                } else {
-                    resetEditorState(result.data, appMode.filePath, null, false);
-                }
-                document.getElementById("empty-state").textContent = "Select a JSON file from the left panel";
-            } else {
-                document.getElementById("empty-state").textContent = "Error: " + (result.error || "Failed to load file");
-                console.error("[INIT] load_file failed:", result.error);
+        console.log("[INIT] Single-file mode:", appMode.filePath);
+        // Use injected file content (zero-delay) or fall back to load_file binding
+        if (window.__pilotFileContent) {
+            const content = window.__pilotFileContent;
+            delete window.__pilotFileContent;
+            try {
+                const data = JSON.parse(content);
+                resetEditorState(data, appMode.filePath, null, false);
+            } catch (e) {
+                resetEditorState(null, appMode.filePath, null, true, content, "Invalid JSON format");
             }
-        } catch (err) {
-            document.getElementById("empty-state").textContent = "Error loading file";
-            console.error("[INIT] load_file exception:", err);
+            document.getElementById("empty-state").textContent = "Select a JSON file from the left panel";
+        } else {
+            document.getElementById("empty-state").textContent = "Loading file via binding...";
+            try {
+                const resultStr = await load_file(appMode.filePath);
+                const result = JSON.parse(resultStr);
+                if (result.success) {
+                    if (result.invalid_json) {
+                        resetEditorState(null, appMode.filePath, null, true, result.raw_text, result.error);
+                    } else {
+                        resetEditorState(result.data, appMode.filePath, null, false);
+                    }
+                    document.getElementById("empty-state").textContent = "Select a JSON file from the left panel";
+                } else {
+                    document.getElementById("empty-state").textContent = "Error: " + (result.error || "Failed to load file");
+                    console.error("[INIT] load_file failed:", result.error);
+                }
+            } catch (err) {
+                document.getElementById("empty-state").textContent = "Error loading file";
+                console.error("[INIT] load_file exception:", err && err.message ? err.message : String(err));
+            }
         }
     } else {
         await populateRootPath();

@@ -227,9 +227,78 @@ public:
             logDebug("[INIT] Mode: directory-browser");
         }
 
+        // Inject mode & file content into HTML before page loads — avoids WebSocket binding delay
+        bool htmlPatched = false;
+        std::string htmlBackup;
+        if (m_singleFileMode) {
+            std::ifstream fi(fs::u8path(m_singleFilePath), std::ios::binary);
+            std::string fileContent;
+            bool fileReadOk = fi.is_open();
+            if (fileReadOk) {
+                fileContent.assign((std::istreambuf_iterator<char>(fi)), std::istreambuf_iterator<char>());
+                fi.close();
+            }
+
+            std::string indexPath = webPath + "\\index.html";
+            std::ifstream fhtml(indexPath);
+            if (fhtml.is_open()) {
+                std::stringstream ss;
+                ss << fhtml.rdbuf();
+                htmlBackup = ss.str();
+                fhtml.close();
+
+                json mj;
+                mj["singleFile"] = true;
+                mj["filePath"] = fs::absolute(fs::u8path(m_singleFilePath)).u8string();
+                std::string modeJson = mj.dump();
+
+                // Escape file content for JS single-quoted string
+                std::string escaped;
+                if (fileReadOk) {
+                    escaped.reserve(fileContent.size() + 16);
+                    for (char c : fileContent) {
+                        if (c == '\\') escaped += "\\\\";
+                        else if (c == '\'') escaped += "\\'";
+                        else if (c == '\n') escaped += "\\n";
+                        else if (c == '\r') escaped += "\\r";
+                        else if (c == '\t') escaped += "\\t";
+                        else escaped += c;
+                    }
+                }
+
+                std::string modeScript = "<script>window.__pilotMode=" + modeJson
+                    + (fileReadOk ? ";window.__pilotFileContent='" + escaped + "'" : "")
+                    + ";</script>";
+
+                size_t pos = htmlBackup.find("<head>");
+                if (pos != std::string::npos) {
+                    std::string modified = htmlBackup;
+                    modified.insert(pos + 6, "\n" + modeScript);
+                    std::ofstream fo(indexPath);
+                    if (fo.is_open()) {
+                        fo << modified;
+                        fo.close();
+                        htmlPatched = true;
+                        logDebug((std::string("[INIT] Injected __pilotMode") + (fileReadOk ? "+fileContent" : "") + " into index.html").c_str());
+                    }
+                }
+            }
+        }
+
         win.set_root_folder(webPath);
         if (!win.show_wv("")) {
             win.show("");
+        }
+
+        // Restore original HTML immediately — page is already loaded
+        if (htmlPatched) {
+            std::string indexPath = webPath + "\\index.html";
+            std::ofstream fo(indexPath);
+            if (fo.is_open()) {
+                fo << htmlBackup;
+                fo.close();
+                logDebug("[INIT] Restored original index.html");
+            }
         }
 
         // --- Drag-drop capture setup ---
