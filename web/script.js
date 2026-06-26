@@ -1065,17 +1065,18 @@ async function showAddSessionDialog() {
 
 async function deleteSession(name) {
     showConfirm('Delete session "' + name + '"?', async () => {
-    try {
-        const resultStr = await delete_session(name);
-        const result = JSON.parse(resultStr);
-        if (result.success) {
-            await loadSessions();
-        } else {
-            alert("Error: " + (result.error || "Failed to delete session"));
+        try {
+            const resultStr = await delete_session(name);
+            const result = JSON.parse(resultStr);
+            if (result.success) {
+                await loadSessions();
+            } else {
+                showError(result.error || "Failed to delete session");
+            }
+        } catch (err) {
+            showError("Error deleting session: " + (err && err.message ? err.message : String(err)));
         }
-    } catch (err) {
-        alert("Error deleting session: " + (err && err.message ? err.message : String(err)));
-    }
+    });
 }
 
 function renderFileTree(node, container, basePath, parentItem, clearContainer = true) {
