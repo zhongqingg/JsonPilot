@@ -102,7 +102,16 @@ struct ControllerHandler : ICoreWebView2CreateCoreWebView2ControllerCompletedHan
         RECT r;
         GetClientRect(g_hwnd, &r);
         controller->put_Bounds(r);
-        logDebug("[CtorHandler] bounds set");
+        // Set dark background (#1e1e1e) to prevent white flash before page loads
+        {
+            ICoreWebView2Controller2* ctrl2 = NULL;
+            if (SUCCEEDED(controller->QueryInterface(IID_ICoreWebView2Controller2, (void**)&ctrl2)) && ctrl2) {
+                COREWEBVIEW2_COLOR bgColor = { 255, 30, 30, 30 };
+                ctrl2->put_DefaultBackgroundColor(bgColor);
+                ctrl2->Release();
+            }
+        }
+        logDebug("[CtorHandler] bounds set, bg color set");
 
         // Register NavigationCompleted
         NavHandler* navHandler = new NavHandler();
