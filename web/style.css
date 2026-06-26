@@ -6,6 +6,7 @@
     --bg-editor: transparent;
     --bg-hover: #2a2d2e;
     --bg-active: #37373d;
+    --bg-session-active: #42424a;
     --bg-input: #3c3c3c;
     --bg-dialog: #252526;
     --bg-dialog-overlay: rgba(0,0,0,0.5);
@@ -71,6 +72,7 @@
     --bg-editor: #f7f4eb;
     --bg-hover: #ede8da;
     --bg-active: #e3dcc8;
+    --bg-session-active: #dfd7bf;
     --bg-input: #ffffff;
     --bg-dialog: #ffffff;
     --bg-dialog-overlay: rgba(0,0,0,0.2);
@@ -236,7 +238,7 @@ body {
 }
 
 .session-header.expanded {
-    background: #3d3d44;
+    background: var(--bg-session-active);
 }
 
 .session-name {
