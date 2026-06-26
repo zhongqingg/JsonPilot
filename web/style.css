@@ -180,7 +180,7 @@ body {
     letter-spacing: 0.5px;
 }
 
-#btnTheme, #btnRefresh {
+#btnTheme, #btnAddSession {
     background: none;
     border: 1px solid var(--border-color);
     color: var(--text-secondary);
@@ -194,20 +194,95 @@ body {
     justify-content: center;
 }
 
-#btnTheme:hover, #btnRefresh:hover {
+#btnTheme:hover, #btnAddSession:hover {
     background: var(--btn-bg);
 }
 
-#path-bar {
-    display: flex;
-    gap: 4px;
-    padding: 6px 8px;
-    background: var(--bg-sidebar-header);
+#session-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+#session-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+#session-list::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#session-list::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 4px;
+}
+
+.session-item {
     border-bottom: 1px solid var(--border-color);
 }
 
-#path-input {
-    flex: 1;
+.session-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+}
+
+.session-header:hover {
+    background: var(--bg-hover);
+}
+
+.session-header.expanded {
+    background: var(--bg-active);
+}
+
+.session-name {
+    font-size: 13px;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.session-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.session-header:hover .session-actions {
+    opacity: 1;
+}
+
+.session-action-btn {
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+}
+
+.session-action-btn:hover {
+    background: var(--btn-bg);
+    color: var(--text-primary);
+}
+
+.session-files {
+    background: var(--bg-main);
+}
+
+.session-empty {
+    padding: 16px 12px;
+    color: var(--text-empty);
+    font-size: 12px;
+    text-align: center;
+}
     min-width: 0;
     padding: 4px 8px;
     background: var(--bg-input);

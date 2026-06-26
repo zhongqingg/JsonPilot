@@ -16,17 +16,13 @@ body{visibility:hidden}
 <div id="app">
     <div id="sidebar">
         <div id="sidebar-header">
-            <h3>JSON Files</h3>
+            <h3>Sessions</h3>
             <div id="sidebar-actions">
+                <button id="btnAddSession" title="Add session">+</button>
                 <button id="btnTheme" title="Toggle theme">🌙</button>
-                <button id="btnRefresh" title="Refresh file tree">↻</button>
             </div>
         </div>
-        <div id="path-bar">
-            <input type="text" id="path-input" placeholder="Data root path..." title="Root directory for JSON files">
-            <button id="btnBrowseFolder" title="Browse for data folder">📂</button>
-        </div>
-        <div id="file-tree"></div>
+        <div id="session-list"></div>
     </div>
     <div id="main-content">
         <div id="toolbar">

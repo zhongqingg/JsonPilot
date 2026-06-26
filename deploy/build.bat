@@ -71,6 +71,12 @@ if exist "build\Release\WebView2Loader.dll" (
 xcopy /y /e "web\*" "deploy\JsonPilot\web\" >nul
 echo   Copied web files
 
+:: Create default config.json
+if not exist "deploy\JsonPilot\config.json" (
+    echo {"theme":"dark","sessions":[]}> "deploy\JsonPilot\config.json"
+)
+echo   Created config.json
+
 :: Copy icons
 if exist "src\icon.png" copy /y "src\icon.png" "deploy\JsonPilot\web\icon.png" >nul
 if exist "src\icon.ico" copy /y "src\icon.ico" "deploy\JsonPilot\web\icon.ico" >nul
@@ -89,6 +95,7 @@ echo   Output: deploy\JsonPilot\
 echo   ^> JsonPilotBackend.exe  (headless server)
 echo   ^> JsonPilotViewer.exe   (WebView2 GUI)
 echo   ^> WebView2Loader.dll
+echo   ^> config.json
 echo   ^> web\ ^(index.html, script.js, style.css, etc.^)
 echo   ^> data\
 echo.

@@ -632,9 +632,7 @@ async function init() {
     const fileToOpen = urlParams.get('file');
 
     await applyConfigTheme();
-    await populateRootPath();
-    await new Promise(r => setTimeout(r, 200));
-    await loadFileTree();
+    await loadSessions();
 
     // If a file was specified in URL params, open it
     if (fileToOpen) {
@@ -660,14 +658,7 @@ async function init() {
         }
     }
 
-    // File tree empty-space right-click: show menu
-    document.getElementById("file-tree").addEventListener("contextmenu", (e) => {
-        if (e.target !== document.getElementById("file-tree")) return;
-        e.preventDefault();
-        showFileTreeEmptyMenu(e.clientX, e.clientY);
-    });
-
-    document.getElementById("btnRefresh").addEventListener("click", loadFileTree);
+    document.getElementById("btnAddSession").addEventListener("click", showAddSessionDialog);
     document.getElementById("btnTheme").addEventListener("click", toggleTheme);
     document.getElementById("btnExpandAll").addEventListener("click", expandAll);
     document.getElementById("btnCollapseAll").addEventListener("click", collapseAll);
@@ -710,12 +701,7 @@ async function init() {
     document.getElementById("btnSearch").addEventListener("click", toggleSearch);
     setupDragAndDrop();
 
-    // Path bar
-    document.getElementById("btnBrowseFolder").addEventListener("click", onBrowseRootFolder);
-    document.getElementById("path-input").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") applyRootPath();
-    });
-    document.getElementById("path-input").addEventListener("blur", () => {
+    document.getElementById("search-input").addEventListener("input", () => {
         applyRootPath();
     });
 
@@ -935,6 +921,156 @@ async function loadFileTree(retryCount) {
     }
 }
 
+async function loadSessions() {
+    const container = document.getElementById("session-list");
+    container.innerHTML = "";
+    try {
+        const sessionsStr = await get_sessions();
+        const sessions = JSON.parse(sessionsStr);
+        for (const session of sessions) {
+            const el = renderSession(session);
+            container.appendChild(el);
+        }
+        if (sessions.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "session-empty";
+            empty.textContent = "No sessions. Click + to add one.";
+            container.appendChild(empty);
+        }
+    } catch (err) {
+        console.error("[SESSIONS] Failed to load:", err);
+        container.innerHTML = '<div class="session-empty" style="padding:12px;color:#888">Failed to load sessions</div>';
+    }
+}
+
+function renderSession(session) {
+    const el = document.createElement("div");
+    el.className = "session-item";
+
+    const header = document.createElement("div");
+    header.className = "session-header";
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "session-name";
+    nameSpan.textContent = session.name;
+    header.appendChild(nameSpan);
+
+    const actions = document.createElement("span");
+    actions.className = "session-actions";
+
+    const deleteBtn = document.createElement("span");
+    deleteBtn.className = "session-action-btn";
+    deleteBtn.textContent = "✕";
+    deleteBtn.title = "Delete session";
+    deleteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteSession(session.name);
+    });
+    actions.appendChild(deleteBtn);
+
+    header.appendChild(actions);
+    el.appendChild(header);
+
+    const fileTreeContainer = document.createElement("div");
+    fileTreeContainer.className = "session-files hidden";
+    el.appendChild(fileTreeContainer);
+
+    let expanded = false;
+    let loaded = false;
+
+    header.addEventListener("click", async () => {
+        if (expanded) {
+            expanded = false;
+            fileTreeContainer.classList.add("hidden");
+            header.classList.remove("expanded");
+            nameSpan.textContent = session.name;
+        } else {
+            expanded = true;
+            header.classList.add("expanded");
+            if (!loaded) {
+                loaded = true;
+                fileTreeContainer.innerHTML = '<div style="padding:4px 16px;color:#888;font-size:12px">Loading...</div>';
+                try {
+                    const text = await get_file_tree_dir(session.path);
+                    fileTreeContainer.innerHTML = "";
+                    const paths = text.trim().split('\n').filter(p => p);
+                    const tree = {};
+                    for (let relPath of paths) {
+                        const isDir = relPath.endsWith('/');
+                        if (isDir) relPath = relPath.slice(0, -1);
+                        const parts = relPath.split('/');
+                        let node = tree;
+                        for (let i = 0; i < parts.length; i++) {
+                            const key = parts[i];
+                            if (i === parts.length - 1) {
+                                if (!isDir) {
+                                    node[key] = { file: relPath, absFile: session.path + "/" + relPath };
+                                } else if (!node[key]) {
+                                    node[key] = {};
+                                }
+                            } else {
+                                if (!node[key]) node[key] = {};
+                                if (node[key].file) {
+                                    node[key] = { __files__: node[key] };
+                                }
+                                node = node[key];
+                            }
+                        }
+                    }
+                    renderFileTree(tree, fileTreeContainer, session.path, null);
+                } catch (err) {
+                    fileTreeContainer.innerHTML = '<div style="padding:4px 16px;color:#f44;font-size:12px">Error loading files</div>';
+                }
+            }
+            fileTreeContainer.classList.remove("hidden");
+        }
+    });
+
+    header.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        ftContextTarget = { type: 'empty', path: '', sessionPath: session.path, itemEl: null };
+        hideContextMenu();
+        const menu = document.getElementById('filetree-empty-menu');
+        positionAndShowMenu(menu, e.clientX, e.clientY);
+    });
+
+    return el;
+}
+
+async function showAddSessionDialog() {
+    const name = prompt("Session name:");
+    if (!name || !name.trim()) return;
+    const path = await browse_folder();
+    if (!path || !path.trim()) return;
+    try {
+        const resultStr = await add_session(name.trim(), path.trim());
+        const result = JSON.parse(resultStr);
+        if (result.success) {
+            await loadSessions();
+        } else {
+            alert("Error: " + (result.error || "Failed to add session"));
+        }
+    } catch (err) {
+        alert("Error adding session: " + (err && err.message ? err.message : String(err)));
+    }
+}
+
+async function deleteSession(name) {
+    if (!confirm('Delete session "' + name + '"?')) return;
+    try {
+        const resultStr = await delete_session(name);
+        const result = JSON.parse(resultStr);
+        if (result.success) {
+            await loadSessions();
+        } else {
+            alert("Error: " + (result.error || "Failed to delete session"));
+        }
+    } catch (err) {
+        alert("Error deleting session: " + (err && err.message ? err.message : String(err)));
+    }
+}
+
 function renderFileTree(node, container, basePath, parentItem, clearContainer = true) {
     if (clearContainer) container.innerHTML = "";
     if (typeof node !== "object" || node === null) return;
@@ -1122,16 +1258,20 @@ async function handleFileTreeAction(t, action) {
     if (!t) return;
 
     if (action === 'fe-newfolder') {
+        const sessionPath = t.sessionPath || '';
         showPrompt('New Folder', '', async (name) => {
-            if (name) await createFolderOp('', name);
+            if (name) await createFolderOp(sessionPath, name);
+            loadSessions();
         });
         return;
     }
     if (action === 'fe-newfile') {
+        const sessionPath = t.sessionPath || '';
         showPrompt('New JSON File', '', async (name) => {
             if (name) {
                 const fn = name.endsWith('.json') ? name : name + '.json';
-                await createFileOp('', fn);
+                await createFileOp(sessionPath, fn);
+                loadSessions();
             }
         });
         return;
@@ -1139,6 +1279,7 @@ async function handleFileTreeAction(t, action) {
     if (action === 'ft-newfolder') {
         showPrompt('New Folder', '', async (name) => {
             if (name) await createFolderOp(t.path, name);
+            loadSessions();
         });
         return;
     }
@@ -1147,6 +1288,7 @@ async function handleFileTreeAction(t, action) {
             if (name) {
                 const fn = name.endsWith('.json') ? name : name + '.json';
                 await createFileOp(t.path, fn);
+                loadSessions();
             }
         });
         return;
@@ -1162,29 +1304,29 @@ async function handleFileTreeAction(t, action) {
             if (newName && newName !== fileName) {
                 const resultStr = await copy_file(t.path, newName);
                 const result = JSON.parse(resultStr);
+                    if (result.success) {
+                        loadSessions();
+                    } else {
+                        showError(result.error);
+                    }
+                }
+            });
+        } else if (action === 'ft-delete') {
+            const label = t.type === 'folder' ? 'folder "' + t.path + '"' : 'file "' + t.path + '"';
+            showConfirm('Delete ' + label + '? This cannot be undone.', async () => {
+                const resultStr = await delete_path(t.path);
+                const result = JSON.parse(resultStr);
                 if (result.success) {
-                    reloadFullTree();
+                    if (currentFilePath === t.path) {
+                        resetEditorState(null, '', null);
+                    }
+                    loadSessions();
                 } else {
                     showError(result.error);
                 }
-            }
-        });
-    } else if (action === 'ft-delete') {
-        const label = t.type === 'folder' ? 'folder "' + t.path + '"' : 'file "' + t.path + '"';
-        showConfirm('Delete ' + label + '? This cannot be undone.', async () => {
-            const resultStr = await delete_path(t.path);
-            const result = JSON.parse(resultStr);
-            if (result.success) {
-                if (currentFilePath === t.path) {
-                    resetEditorState(null, '', null);
-                }
-                reloadFullTree();
-            } else {
-                showError(result.error);
-            }
-        }, 'Delete');
+            }, 'Delete');
+        }
     }
-}
 
 let folderExpandState = {};
 function restoreExpandState() {
@@ -1205,16 +1347,11 @@ function saveExpandState(path, expanded) {
     else delete folderExpandState[path];
 }
 
-async function reloadFullTree() {
-    await loadFileTree(99);
-    setTimeout(() => restoreExpandState(), 80);
-}
-
 async function createFolderOp(parentPath, name) {
     const resultStr = await create_folder(parentPath, name);
     const result = JSON.parse(resultStr);
     if (result.success) {
-        await reloadFullTree();
+        await loadSessions();
     } else {
         showError(result.error);
     }
@@ -1224,7 +1361,7 @@ async function createFileOp(parentPath, name) {
     const resultStr = await create_file(parentPath, name);
     const result = JSON.parse(resultStr);
     if (result.success) {
-        await reloadFullTree();
+        await loadSessions();
     } else {
         showError(result.error);
     }

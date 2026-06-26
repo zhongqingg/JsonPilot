@@ -215,6 +215,10 @@ public:
         win.bind("get_last_drop_path", this, &JsonEditorApp::bindGetDropPath);
         win.bind("get_app_mode", this, &JsonEditorApp::bindGetAppMode);
         win.bind("log", this, &JsonEditorApp::bindLog);
+        win.bind("get_sessions", this, &JsonEditorApp::bindGetSessions);
+        win.bind("add_session", this, &JsonEditorApp::bindAddSession);
+        win.bind("delete_session", this, &JsonEditorApp::bindDeleteSession);
+        win.bind("get_file_tree_dir", this, &JsonEditorApp::bindGetFileTreeDir);
         win.set_close_handler_wv(closeHandler);
     }
 
@@ -412,6 +416,7 @@ private:
     std::string theme = "dark";
     std::string configPath;
     std::vector<std::pair<std::string, std::string>> jsonFiles;
+    std::vector<std::pair<std::string, std::string>> m_sessions;
     bool m_singleFileMode = false;
     std::string m_singleFilePath;
     bool iconApplied = false;
@@ -472,48 +477,29 @@ private:
     }
 
     void loadConfig() {
-        std::string exeDir = getExeDir();
-        std::vector<std::string> candidates = {
-            exeDir + "\\config.txt",
-            "config.txt",
-            "../config.txt",
-            "../../config.txt"
-        };
-
-        for (const auto& path : candidates) {
-            std::ifstream f(path);
-            if (f.is_open()) {
-                configPath = path;
-                std::string line;
-                while (std::getline(f, line)) {
-                    if (line.empty() || line[0] == '#') continue;
-                    size_t eq = line.find('=');
-                    if (eq != std::string::npos) {
-                        std::string key = line.substr(0, eq);
-                        std::string val = line.substr(eq + 1);
-                        trim(key);
-                        trim(val);
-                        if (key == "root_dir") {
-                            rootDir = val;
-                        } else if (key == "theme") {
-                            if (val == "light" || val == "dark") theme = val;
-                        }
-                    }
-                }
+        configPath = getExeDir() + "\\config.json";
+        std::ifstream f(configPath);
+        if (f.is_open()) {
+            try {
+                json cfg = json::parse(f);
                 f.close();
-                break;
+                theme = cfg.value("theme", "dark");
+                if (theme != "light" && theme != "dark") theme = "dark";
+
+                auto sessions = cfg.value("sessions", json::array());
+                for (auto& s : sessions) {
+                    m_sessions.push_back({s.value("name", ""), s.value("path", "")});
+                }
+            } catch (...) {
+                f.close();
             }
         }
 
         if (rootDir.empty()) {
-            rootDir = "data";
-        }
-
-        if (!fs::u8path(rootDir).is_absolute()) {
-            fs::path base = fs::path(configPath).parent_path();
-            if (base.empty()) base = fs::current_path();
-            fs::path absPath = base / fs::u8path(rootDir);
-            rootDir = fs::absolute(absPath).u8string();
+            rootDir = getExeDir() + "\\data";
+            if (!fs::exists(fs::u8path(rootDir))) {
+                rootDir = "data";
+            }
         }
     }
 
@@ -619,6 +605,14 @@ private:
         json result;
         result["root_dir"] = rootDir;
         result["theme"] = theme;
+        json sessions = json::array();
+        for (auto& s : m_sessions) {
+            json item;
+            item["name"] = s.first;
+            item["path"] = s.second;
+            sessions.push_back(item);
+        }
+        result["sessions"] = sessions;
         result["success"] = true;
         e->return_string(result.dump());
     }
@@ -871,15 +865,20 @@ private:
         e->return_string(result.dump());
     }
 
+    fs::path resolveParentPath(const std::string& parentRelPath) {
+        if (parentRelPath.empty()) return fs::u8path(rootDir);
+        fs::path p = fs::u8path(parentRelPath);
+        if (p.is_absolute()) return p;
+        return fs::u8path(rootDir) / p;
+    }
+
     void bindCreateFolder(webui::window::event* e) {
         json result;
         try {
             std::string parentRelPath = e->get_string(0);
             std::string folderName = e->get_string(1);
 
-            fs::path parentPath = parentRelPath.empty()
-                ? fs::u8path(rootDir)
-                : fs::u8path(rootDir) / fs::u8path(parentRelPath);
+            fs::path parentPath = resolveParentPath(parentRelPath);
             fs::path newFolder = parentPath / fs::u8path(folderName);
 
             std::error_code ec;
@@ -915,9 +914,7 @@ private:
             std::string parentRelPath = e->get_string(0);
             std::string fileName = e->get_string(1);
 
-            fs::path parentPath = parentRelPath.empty()
-                ? fs::u8path(rootDir)
-                : fs::u8path(rootDir) / fs::u8path(parentRelPath);
+            fs::path parentPath = resolveParentPath(parentRelPath);
             fs::path newFile = parentPath / fs::u8path(fileName);
 
             if (fs::exists(newFile)) {
@@ -954,7 +951,7 @@ private:
         std::string relPath = e->get_string(0);
         json result;
 
-        fs::path targetPath = fs::u8path(rootDir) / fs::u8path(relPath);
+        fs::path targetPath = resolveParentPath(relPath);
         std::error_code ec;
         if (fs::exists(targetPath, ec)) {
             fs::remove_all(targetPath, ec);
@@ -983,7 +980,7 @@ private:
         std::string newName = e->get_string(1);
         json result;
 
-        fs::path oldPath = fs::u8path(rootDir) / fs::u8path(relPath);
+        fs::path oldPath = resolveParentPath(relPath);
         fs::path newPath = oldPath.parent_path() / fs::u8path(newName);
 
         std::error_code ec;
@@ -1012,7 +1009,7 @@ private:
         std::string newName = e->get_string(1);
         json result;
 
-        fs::path srcPath = fs::u8path(rootDir) / fs::u8path(relPath);
+        fs::path srcPath = resolveParentPath(relPath);
         fs::path dstPath = srcPath.parent_path() / fs::u8path(newName);
 
         std::error_code ec;
@@ -1058,11 +1055,77 @@ private:
         e->return_string(result.dump());
     }
 
+    void bindGetSessions(webui::window::event* e) {
+        json result = json::array();
+        for (auto& s : m_sessions) {
+            json item;
+            item["name"] = s.first;
+            item["path"] = s.second;
+            result.push_back(item);
+        }
+        e->return_string(result.dump());
+    }
+
+    void bindAddSession(webui::window::event* e) {
+        std::string name = e->get_string(0);
+        std::string path = e->get_string(1);
+        json result;
+        if (name.empty() || path.empty()) {
+            result["success"] = false;
+            result["error"] = "Name and path are required";
+        } else {
+            m_sessions.push_back({name, path});
+            saveConfig();
+            result["success"] = true;
+        }
+        e->return_string(result.dump());
+    }
+
+    void bindDeleteSession(webui::window::event* e) {
+        std::string name = e->get_string(0);
+        json result;
+        auto it = std::remove_if(m_sessions.begin(), m_sessions.end(),
+            [&](const auto& s) { return s.first == name; });
+        if (it != m_sessions.end()) {
+            m_sessions.erase(it, m_sessions.end());
+            saveConfig();
+            result["success"] = true;
+        } else {
+            result["success"] = false;
+            result["error"] = "Session not found: " + name;
+        }
+        e->return_string(result.dump());
+    }
+
+    void bindGetFileTreeDir(webui::window::event* e) {
+        std::string dirPath = e->get_string(0);
+        std::string result;
+        if (dirPath.empty() || !fs::exists(fs::u8path(dirPath))) {
+            e->return_string("");
+            return;
+        }
+        jsonFiles.clear();
+        scanDir(fs::u8path(dirPath), "");
+        for (const auto& [relPath, absPath] : jsonFiles) {
+            result += relPath + "\n";
+        }
+        e->return_string(result);
+    }
+
     void saveConfig() {
+        json cfg;
+        cfg["theme"] = theme;
+        json sessions = json::array();
+        for (auto& s : m_sessions) {
+            json item;
+            item["name"] = s.first;
+            item["path"] = s.second;
+            sessions.push_back(item);
+        }
+        cfg["sessions"] = sessions;
         std::ofstream f(configPath);
         if (f.is_open()) {
-            f << "root_dir=" << rootDir << "\n";
-            f << "theme=" << theme << "\n";
+            f << cfg.dump(2);
         }
     }
 

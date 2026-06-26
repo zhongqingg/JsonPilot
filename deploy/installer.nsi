@@ -54,6 +54,7 @@ Section "MainSection" SEC01
     File "JsonPilot\JsonPilotBackend.exe"
     File "JsonPilot\JsonPilotViewer.exe"
     File "JsonPilot\WebView2Loader.dll"
+    File "JsonPilot\config.json"
 
     ; Web files
     SetOutPath "$INSTDIR\web"
@@ -104,6 +105,7 @@ Section Uninstall
     Delete "$INSTDIR\JsonPilotBackend.exe"
     Delete "$INSTDIR\JsonPilotViewer.exe"
     Delete "$INSTDIR\WebView2Loader.dll"
+    Delete "$INSTDIR\config.json"
 
     RMDir /r "$INSTDIR\web"
     RMDir "$INSTDIR\data"
