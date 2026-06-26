@@ -639,6 +639,7 @@ async function init() {
     // If a file was specified in URL params, open it
     if (fileToOpen) {
         console.log("[INIT] Opening file from URL param:", fileToOpen);
+        document.getElementById("sidebar").style.display = "none";
         document.getElementById("empty-state").textContent = "Loading file...";
         try {
             const resultStr = await load_file(fileToOpen);
