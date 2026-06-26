@@ -236,7 +236,7 @@ body {
 }
 
 .session-header.expanded {
-    background: var(--bg-active);
+    background: #3d3d44;
 }
 
 .session-name {
