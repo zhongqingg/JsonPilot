@@ -45,6 +45,9 @@ if(MSVC)
     )
 endif()
 
+# ── Viewer options ──
+option(JSONEDITOR_DEVTOOLS "Show DevTools window for debugging" OFF)
+
 # ── Viewer target (WebView2 window) ──
 if(WIN32)
     add_executable(JsonPilotViewer WIN32
@@ -61,6 +64,10 @@ target_include_directories(JsonPilotViewer PRIVATE
 target_link_libraries(JsonPilotViewer PRIVATE
     dwmapi ole32 runtimeobject shell32
 )
+
+if(JSONEDITOR_DEVTOOLS)
+    target_compile_definitions(JsonPilotViewer PRIVATE JSONEDITOR_DEVTOOLS)
+endif()
 
 # Copy WebView2Loader.dll to viewer output
 add_custom_command(TARGET JsonPilotViewer POST_BUILD

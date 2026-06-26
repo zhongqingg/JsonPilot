@@ -59,34 +59,7 @@ struct NavHandler : ICoreWebView2NavigationCompletedEventHandler {
         logDebug(("[Nav] isSuccess=" + std::to_string(isSuccess) + " err=" + std::to_string(static_cast<int>(err))).c_str());
 
         if (isSuccess && sender) {
-            struct ScriptResult : ICoreWebView2ExecuteScriptCompletedHandler {
-                LONG ref = 1;
-                HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
-                    if (riid == IID_ICoreWebView2ExecuteScriptCompletedHandler || riid == IID_IUnknown) { *ppv = this; AddRef(); return S_OK; }
-                    *ppv = NULL; return E_NOINTERFACE;
-                }
-                ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&ref); }
-                ULONG STDMETHODCALLTYPE Release() override { LONG r = InterlockedDecrement(&ref); if (r==0) delete this; return r; }
-                HRESULT STDMETHODCALLTYPE Invoke(HRESULT errorCode, PCWSTR resultObjectAsJson) override {
-                    std::wstring w(resultObjectAsJson ? resultObjectAsJson : L"");
-                    std::string s(w.begin(), w.end());
-                    logDebug(("[JS] " + s).c_str());
-                    return S_OK;
-                }
-            };
-            ScriptResult* sr1 = new ScriptResult(); sr1->AddRef();
-            sender->ExecuteScript(L"document.body.style.background='red';document.getElementById('app').style.background='blue';'ok'", sr1);
-            sr1->Release();
-
-            ScriptResult* sr2 = new ScriptResult(); sr2->AddRef();
-            sender->ExecuteScript(L"JSON.stringify({t:document.title,b:getComputedStyle(document.body).backgroundColor,h:getComputedStyle(document.documentElement).backgroundColor,w:document.documentElement.scrollWidth+','+document.documentElement.scrollHeight,r:JSON.stringify(document.body.getBoundingClientRect())})", sr2);
-            sr2->Release();
-
-            // Check WebSocket state after a delay
-            ScriptResult* sr3 = new ScriptResult(); sr3->AddRef();
-            sender->ExecuteScript(L"setTimeout(function(){try{var w=globalThis.webui;var c=w?w.isConnected():false;var s='ws:'+ (typeof get_config)+' connected:'+c;console.log(s);document.getElementById('empty-state').textContent=s}catch(e){document.getElementById('empty-state').textContent='err:'+e.message}},5000)", sr3);
-            sr3->Release();
-            logDebug("[Nav] JS injection done");
+            logDebug("[Nav] navigation successful");
         }
         return S_OK;
     }
@@ -148,14 +121,17 @@ struct ControllerHandler : ICoreWebView2CreateCoreWebView2ControllerCompletedHan
         g_webview->get_Settings(&settings);
         if (settings) {
             settings->put_IsScriptEnabled(TRUE);
+#ifdef JSONEDITOR_DEVTOOLS
             settings->put_AreDevToolsEnabled(TRUE);
+#endif
             settings->Release();
         }
         logDebug("[CtorHandler] settings configured");
 
-        // Open DevTools for debugging (you can inspect the page)
+#ifdef JSONEDITOR_DEVTOOLS
         g_webview->OpenDevToolsWindow();
         logDebug("[CtorHandler] DevTools opened");
+#endif
 
         SetForegroundWindow(g_hwnd);
         logDebug("[CtorHandler] done");
