@@ -65,6 +65,59 @@ struct NavHandler : ICoreWebView2NavigationCompletedEventHandler {
     }
 };
 
+// ── Title bar theme helpers ──
+
+static void setTitleBarTheme(bool dark) {
+    BOOL mode = dark ? TRUE : FALSE;
+    DwmSetWindowAttribute(g_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &mode, sizeof(mode));
+}
+
+static bool loadThemeFromConfig() {
+    std::string exeDir = []() {
+        char path[4096];
+        GetModuleFileNameA(NULL, path, sizeof(path));
+        std::string p(path);
+        size_t pos = p.find_last_of("\\/");
+        return pos != std::string::npos ? p.substr(0, pos) : ".";
+    }();
+    std::string cfgPath = exeDir + "\\config.json";
+    std::ifstream f(cfgPath);
+    if (!f.is_open()) return false;
+    std::string content((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    f.close();
+    auto pos = content.find("\"theme\"");
+    if (pos == std::string::npos) return false;
+    pos = content.find('"', pos + 7);
+    if (pos == std::string::npos) return false;
+    pos++;
+    auto end = content.find('"', pos);
+    if (end == std::string::npos) return false;
+    return content.substr(pos, end - pos) == "light";
+}
+
+// ── WebMessage handler (page → host) ──
+
+struct WebMsgHandler : ICoreWebView2WebMessageReceivedEventHandler {
+    LONG ref = 1;
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == IID_ICoreWebView2WebMessageReceivedEventHandler || riid == IID_IUnknown) { *ppv = this; AddRef(); return S_OK; }
+        *ppv = NULL; return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&ref); }
+    ULONG STDMETHODCALLTYPE Release() override { LONG r = InterlockedDecrement(&ref); if (r==0) delete this; return r; }
+    HRESULT STDMETHODCALLTYPE Invoke(ICoreWebView2* sender, ICoreWebView2WebMessageReceivedEventArgs* args) override {
+        LPWSTR msg = NULL;
+        if (args && SUCCEEDED(args->TryGetWebMessageAsString(&msg)) && msg) {
+            std::wstring w(msg);
+            std::string s(w.begin(), w.end());
+            CoTaskMemFree(msg);
+            if (s == "theme:light") setTitleBarTheme(false);
+            else if (s == "theme:dark") setTitleBarTheme(true);
+        }
+        return S_OK;
+    }
+};
+
 // ── Controller completed handler ──
 
 struct ControllerHandler : ICoreWebView2CreateCoreWebView2ControllerCompletedHandler {
@@ -141,6 +194,14 @@ struct ControllerHandler : ICoreWebView2CreateCoreWebView2ControllerCompletedHan
         g_webview->OpenDevToolsWindow();
         logDebug("[CtorHandler] DevTools opened");
 #endif
+
+        // Register WebMessage handler (page → host for theme changes)
+        WebMsgHandler* msgHandler = new WebMsgHandler();
+        msgHandler->AddRef();
+        EventRegistrationToken msgToken = {};
+        g_webview->add_WebMessageReceived(msgHandler, &msgToken);
+        msgHandler->Release();
+        logDebug("[CtorHandler] WebMessage handler registered");
 
         SetForegroundWindow(g_hwnd);
         logDebug("[CtorHandler] done");
@@ -407,9 +468,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, PSTR cmdLine, int showCmd) {
         return 1;
     }
 
-    // Dark title bar (Win 10 20H1+)
-    BOOL darkMode = TRUE;
-    DwmSetWindowAttribute(g_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
+    // Title bar theme from config.json
+    bool isLight = loadThemeFromConfig();
+    setTitleBarTheme(!isLight);
 
     // Initialize WebView2 (async, shows window when ready)
     initWebView(g_hwnd);

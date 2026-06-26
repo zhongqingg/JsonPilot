@@ -830,6 +830,12 @@ function toggleTheme() {
     const next = current === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     updateThemeButton(next);
+    set_theme(next);
+    try {
+        if (window.chrome && window.chrome.webview) {
+            window.chrome.webview.postMessage("theme:" + next);
+        }
+    } catch(e) {}
 }
 
 function updateThemeButton(theme) {

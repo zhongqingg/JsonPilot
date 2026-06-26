@@ -215,6 +215,7 @@ public:
         win.bind("get_last_drop_path", this, &JsonEditorApp::bindGetDropPath);
         win.bind("get_app_mode", this, &JsonEditorApp::bindGetAppMode);
         win.bind("log", this, &JsonEditorApp::bindLog);
+        win.bind("set_theme", this, &JsonEditorApp::bindSetTheme);
         win.bind("get_sessions", this, &JsonEditorApp::bindGetSessions);
         win.bind("add_session", this, &JsonEditorApp::bindAddSession);
         win.bind("delete_session", this, &JsonEditorApp::bindDeleteSession);
@@ -614,6 +615,20 @@ private:
         }
         result["sessions"] = sessions;
         result["success"] = true;
+        e->return_string(result.dump());
+    }
+
+    void bindSetTheme(webui::window::event* e) {
+        std::string t = e->get_string(0);
+        json result;
+        if (t == "light" || t == "dark") {
+            theme = t;
+            saveConfig();
+            result["success"] = true;
+        } else {
+            result["success"] = false;
+            result["error"] = "Invalid theme: " + t;
+        }
         e->return_string(result.dump());
     }
 
