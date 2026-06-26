@@ -1045,25 +1045,26 @@ function renderSession(session) {
 }
 
 async function showAddSessionDialog() {
-    const name = prompt("Session name:");
-    if (!name || !name.trim()) return;
-    const path = await browse_folder();
-    if (!path || !path.trim()) return;
-    try {
-        const resultStr = await add_session(name.trim(), path.trim());
-        const result = JSON.parse(resultStr);
-        if (result.success) {
-            await loadSessions();
-        } else {
-            alert("Error: " + (result.error || "Failed to add session"));
+    showPrompt("Session name:", "", async (name) => {
+        if (!name) return;
+        const path = await browse_folder();
+        if (!path) return;
+        try {
+            const resultStr = await add_session(name, path);
+            const result = JSON.parse(resultStr);
+            if (result.success) {
+                await loadSessions();
+            } else {
+                showError(result.error || "Failed to add session");
+            }
+        } catch (err) {
+            showError("Error adding session: " + (err && err.message ? err.message : String(err)));
         }
-    } catch (err) {
-        alert("Error adding session: " + (err && err.message ? err.message : String(err)));
-    }
+    });
 }
 
 async function deleteSession(name) {
-    if (!confirm('Delete session "' + name + '"?')) return;
+    showConfirm('Delete session "' + name + '"?', async () => {
     try {
         const resultStr = await delete_session(name);
         const result = JSON.parse(resultStr);
