@@ -185,7 +185,29 @@ struct EnvHandler : ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler {
         logDebug(("[EnvHandler] URL=" + std::string(url.begin(), url.end())).c_str());
         ControllerHandler* ctrlHandler = new ControllerHandler(url);
         ctrlHandler->AddRef();
-        env->CreateCoreWebView2Controller(g_hwnd, ctrlHandler);
+
+        // Try to set dark background before controller creation (avoids white flash)
+        ICoreWebView2Environment10* env10 = NULL;
+        if (SUCCEEDED(env->QueryInterface(IID_ICoreWebView2Environment10, (void**)&env10)) && env10) {
+            ICoreWebView2ControllerOptions* options = NULL;
+            if (SUCCEEDED(env10->CreateCoreWebView2ControllerOptions(&options)) && options) {
+                ICoreWebView2ControllerOptions3* opts3 = NULL;
+                if (SUCCEEDED(options->QueryInterface(IID_ICoreWebView2ControllerOptions3, (void**)&opts3)) && opts3) {
+                    COREWEBVIEW2_COLOR bg = { 255, 30, 30, 30 };
+                    opts3->put_DefaultBackgroundColor(bg);
+                    env10->CreateCoreWebView2ControllerWithOptions(g_hwnd, opts3, ctrlHandler);
+                    opts3->Release();
+                } else {
+                    env10->CreateCoreWebView2ControllerWithOptions(g_hwnd, options, ctrlHandler);
+                }
+                options->Release();
+            } else {
+                env10->CreateCoreWebView2ControllerWithOptions(g_hwnd, NULL, ctrlHandler);
+            }
+            env10->Release();
+        } else {
+            env->CreateCoreWebView2Controller(g_hwnd, ctrlHandler);
+        }
         ctrlHandler->Release();
         logDebug("[EnvHandler] CreateCoreWebView2Controller returned");
         return S_OK;
@@ -296,8 +318,15 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             if (g_webview) { g_webview->Release(); g_webview = NULL; }
             PostQuitMessage(0);
             return 0;
-        case WM_ERASEBKGND:
+        case WM_ERASEBKGND: {
+            HDC dc = (HDC)wParam;
+            RECT r;
+            GetClientRect(hwnd, &r);
+            HBRUSH brush = CreateSolidBrush(RGB(30, 30, 30));
+            FillRect(dc, &r, brush);
+            DeleteObject(brush);
             return 1;
+        }
     }
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
