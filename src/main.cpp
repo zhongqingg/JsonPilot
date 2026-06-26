@@ -1,5 +1,6 @@
 #include "webui.hpp"
 #include "nlohmann/json.hpp"
+#include "src/shared.h"
 #include <iostream>
 #include <fstream>
 #include <filesystem>
@@ -359,6 +360,40 @@ public:
             }
             if (!webui_wait_async()) break;
             Sleep(50);
+        }
+    }
+
+    void runBackground() {
+        std::string webPath = resolveWebPath();
+        logDebug(("[BACKEND] Serving web folder: " + webPath).c_str());
+        logDebug(("[BACKEND] JSON root dir: " + rootDir).c_str());
+        logDebug("[BACKEND] Mode: directory-browser (multi-client)");
+
+        // Enable multi-client mode so multiple viewers can connect
+        webui_set_config(multi_client, true);
+
+        // Use fixed port 9391 (agreed between viewer and backend)
+        // Port is now fixed at 9391 — see shared.h
+        if (!win.set_port(JSONEDITOR_PORT)) {
+            logDebug(("[BACKEND] Port " + std::to_string(JSONEDITOR_PORT) + " is in use, letting WebUI pick").c_str());
+        }
+
+        win.set_root_folder(webPath);
+
+        // Start server headlessly
+        std::string_view url = win.start_server("");
+        if (url.empty()) {
+            logDebug("[BACKEND] Failed to start HTTP server!");
+            return;
+        }
+
+        size_t actualPort = win.get_port();
+        logDebug(("[BACKEND] Server running at http://127.0.0.1:" + std::to_string(actualPort)).c_str());
+
+        logDebug("[BACKEND] Entering main loop");
+        while (true) {
+            if (!webui_wait_async())
+                Sleep(100);
         }
     }
 
@@ -1049,24 +1084,39 @@ bool JsonEditorApp::forceClosing = false;
 bool JsonEditorApp::closeRequested = false;
 
 int main() {
+    // ── Single-instance protection ──
+    HANDLE hMutex = CreateMutexA(NULL, FALSE, "JsonPilotBackend");
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        CloseHandle(hMutex);
+        logDebug("[MAIN] Another backend instance is already running, exiting.");
+        return 0;
+    }
+
+    // Parse command line for --backend (kept for backward compat with viewer)
     std::string filePath;
+    bool backendMode = false;
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (argv) {
-        if (argc > 1) {
-            int len = WideCharToMultiByte(CP_UTF8, 0, argv[1], -1, NULL, 0, NULL, NULL);
+        for (int i = 1; i < argc; i++) {
+            int len = WideCharToMultiByte(CP_UTF8, 0, argv[i], -1, NULL, 0, NULL, NULL);
             if (len > 0) {
-                filePath.resize(len - 1);
-                WideCharToMultiByte(CP_UTF8, 0, argv[1], -1, &filePath[0], len, NULL, NULL);
+                std::string arg;
+                arg.resize(len - 1);
+                WideCharToMultiByte(CP_UTF8, 0, argv[i], -1, &arg[0], len, NULL, NULL);
+                if (arg == "--backend") {
+                    backendMode = true;
+                } else if (!backendMode && filePath.empty() && arg[0] != '-') {
+                    filePath = arg;
+                }
             }
         }
         LocalFree(argv);
     }
 
-    logDebug(("[MAIN] argc=" + std::to_string(argc) + " filePath=" + filePath).c_str());
-
-    JsonEditorApp app(filePath);
-    app.run();
+    logDebug("[MAIN] Starting JsonPilotBackend (headless, single-instance)");
+    JsonEditorApp app;
+    app.runBackground();
     return 0;
 }
 

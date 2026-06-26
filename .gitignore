@@ -5,6 +5,7 @@ build/
 *.obj
 *.o
 *.a
+*.log
 .DS_Store
 Thumbs.db
 data/

@@ -19,62 +19,94 @@ add_definitions(-DWEB_SOURCE_DIR="${WEB_SOURCE_DIR}")
 
 configure_file(src/resources.rc.in src/resources.rc @ONLY)
 
+# ── Backend target (headless HTTP server) ──
 if(WIN32)
-    add_executable(JsonPilot WIN32
+    add_executable(JsonPilotBackend WIN32
         src/main.cpp
         ${CMAKE_CURRENT_BINARY_DIR}/src/resources.rc
     )
 else()
-    add_executable(JsonPilot
+    add_executable(JsonPilotBackend
         src/main.cpp
     )
 endif()
 
-target_include_directories(JsonPilot PRIVATE
+target_include_directories(JsonPilotBackend PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/nlohmannjson/single_include
     ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/webui/include
 )
 
-target_link_libraries(JsonPilot PRIVATE webui ole32 runtimeobject shell32)
+target_link_libraries(JsonPilotBackend PRIVATE webui ole32 runtimeobject shell32)
 
 if(MSVC)
-    set_target_properties(JsonPilot PROPERTIES
+    set_target_properties(JsonPilotBackend PROPERTIES
         VS_DPI_AWARE "ON"
     )
 endif()
 
-# Copy web folder to build output directory
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/web DESTINATION ${CMAKE_BINARY_DIR})
+# ── Viewer target (WebView2 window) ──
+if(WIN32)
+    add_executable(JsonPilotViewer WIN32
+        src/viewer_main.cpp
+        ${CMAKE_CURRENT_BINARY_DIR}/src/resources.rc
+    )
+endif()
 
-add_custom_command(TARGET JsonPilot POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/web"
-        "$<TARGET_FILE_DIR:JsonPilot>/web"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/icon.png"
-        "$<TARGET_FILE_DIR:JsonPilot>/web/icon.png"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/icon.ico"
-        "$<TARGET_FILE_DIR:JsonPilot>/web/icon.ico"
-    COMMENT "Copy web files to output directory"
+target_include_directories(JsonPilotViewer PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/webview2/include
 )
 
-# Install / Packaging target
+target_link_libraries(JsonPilotViewer PRIVATE
+    dwmapi ole32 runtimeobject shell32
+)
+
+# Copy WebView2Loader.dll to viewer output
+add_custom_command(TARGET JsonPilotViewer POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/thirdparty/WebView2Loader.dll"
+        "$<TARGET_FILE_DIR:JsonPilotViewer>/WebView2Loader.dll"
+    COMMENT "Copy WebView2Loader.dll to output"
+)
+
+# Copy web folder to both output directories
+foreach(tgt JsonPilotBackend JsonPilotViewer)
+    add_custom_command(TARGET ${tgt} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/web"
+            "$<TARGET_FILE_DIR:${tgt}>/web"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/icon.png"
+            "$<TARGET_FILE_DIR:${tgt}>/web/icon.png"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/src/icon.ico"
+            "$<TARGET_FILE_DIR:${tgt}>/web/icon.ico"
+        COMMENT "Copy web files to ${tgt} output"
+    )
+endforeach()
+
+# Install rules
 include(GNUInstallDirs)
-install(TARGETS JsonPilot RUNTIME DESTINATION .)
+install(TARGETS JsonPilotBackend JsonPilotViewer RUNTIME DESTINATION .)
+install(FILES thirdparty/WebView2Loader.dll DESTINATION .)
 install(DIRECTORY web/ DESTINATION web)
 install(FILES src/icon.png DESTINATION web)
 install(FILES src/icon.ico DESTINATION web)
 install(DIRECTORY data/ DESTINATION data OPTIONAL)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/Release/config.txt DESTINATION . OPTIONAL)
+
+# Default config
 install(CODE "
-    file(WRITE \"\${CMAKE_INSTALL_PREFIX}/config.txt\" \"root_dir=data\ntheme=dark\n\")
+    file(WRITE \"\${CMAKE_INSTALL_PREFIX}/config.txt\"
+        \"root_dir=data\\ntheme=dark\\n\")
 ")
 
-# Custom target for deploy packaging
+# Custom deploy target
 add_custom_target(deploy
-    COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR} --config Release --prefix ${CMAKE_CURRENT_SOURCE_DIR}/deploy/JsonPilot
-    COMMENT "Packaging JsonPilot to deploy folder"
+    COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR} --config Release
+        --prefix ${CMAKE_CURRENT_SOURCE_DIR}/deploy/JsonPilot
+    COMMENT "Packaging to deploy/JsonPilot/"
 )
 
 message(STATUS "Web folder: ${CMAKE_CURRENT_SOURCE_DIR}/web")
+message(STATUS "Targets: JsonPilotBackend, JsonPilotViewer")

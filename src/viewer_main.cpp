@@ -1,0 +1,409 @@
+#include <windows.h>
+#include <shellapi.h>
+#include <tlhelp32.h>
+#include <dwmapi.h>
+#include <string>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <ctime>
+#include <sstream>
+#include <WebView2.h>
+#include "src/shared.h"
+
+namespace fs = std::filesystem;
+
+static void logDebug(const char* msg) {
+    std::time_t t = std::time(nullptr);
+    char buf[32] = {};
+    std::strftime(buf, sizeof(buf), "%H:%M:%S", std::localtime(&t));
+    std::string line = std::string("[") + buf + "] " + msg + "\n";
+    std::ofstream log("viewer_debug.log", std::ios::app);
+    if (log.is_open()) { log << line; log.close(); }
+}
+
+static constexpr int WINDOW_WIDTH = 1280;
+static constexpr int WINDOW_HEIGHT = 800;
+
+static HWND g_hwnd = NULL;
+static ICoreWebView2Controller* g_controller = NULL;
+static ICoreWebView2* g_webview = NULL;
+static std::string g_targetUrl;
+
+// ── Navigation completed handler ──
+
+struct NavHandler : ICoreWebView2NavigationCompletedEventHandler {
+    LONG ref = 1;
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == IID_ICoreWebView2NavigationCompletedEventHandler ||
+            riid == IID_IUnknown) {
+            *ppv = this; AddRef(); return S_OK;
+        }
+        *ppv = NULL; return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&ref); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        LONG r = InterlockedDecrement(&ref);
+        if (r == 0) delete this;
+        return r;
+    }
+
+    HRESULT STDMETHODCALLTYPE Invoke(ICoreWebView2* sender, ICoreWebView2NavigationCompletedEventArgs* args) override {
+        BOOL isSuccess = FALSE;
+        COREWEBVIEW2_WEB_ERROR_STATUS err = COREWEBVIEW2_WEB_ERROR_STATUS_UNKNOWN;
+        if (args) {
+            args->get_IsSuccess(&isSuccess);
+            args->get_WebErrorStatus(&err);
+        }
+        logDebug(("[Nav] isSuccess=" + std::to_string(isSuccess) + " err=" + std::to_string(static_cast<int>(err))).c_str());
+
+        if (isSuccess && sender) {
+            struct ScriptResult : ICoreWebView2ExecuteScriptCompletedHandler {
+                LONG ref = 1;
+                HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+                    if (riid == IID_ICoreWebView2ExecuteScriptCompletedHandler || riid == IID_IUnknown) { *ppv = this; AddRef(); return S_OK; }
+                    *ppv = NULL; return E_NOINTERFACE;
+                }
+                ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&ref); }
+                ULONG STDMETHODCALLTYPE Release() override { LONG r = InterlockedDecrement(&ref); if (r==0) delete this; return r; }
+                HRESULT STDMETHODCALLTYPE Invoke(HRESULT errorCode, PCWSTR resultObjectAsJson) override {
+                    std::wstring w(resultObjectAsJson ? resultObjectAsJson : L"");
+                    std::string s(w.begin(), w.end());
+                    logDebug(("[JS] " + s).c_str());
+                    return S_OK;
+                }
+            };
+            ScriptResult* sr1 = new ScriptResult(); sr1->AddRef();
+            sender->ExecuteScript(L"document.body.style.background='red';document.getElementById('app').style.background='blue';'ok'", sr1);
+            sr1->Release();
+
+            ScriptResult* sr2 = new ScriptResult(); sr2->AddRef();
+            sender->ExecuteScript(L"JSON.stringify({t:document.title,b:getComputedStyle(document.body).backgroundColor,h:getComputedStyle(document.documentElement).backgroundColor,w:document.documentElement.scrollWidth+','+document.documentElement.scrollHeight,r:JSON.stringify(document.body.getBoundingClientRect())})", sr2);
+            sr2->Release();
+
+            // Check WebSocket state after a delay
+            ScriptResult* sr3 = new ScriptResult(); sr3->AddRef();
+            sender->ExecuteScript(L"setTimeout(function(){try{var w=globalThis.webui;var c=w?w.isConnected():false;var s='ws:'+ (typeof get_config)+' connected:'+c;console.log(s);document.getElementById('empty-state').textContent=s}catch(e){document.getElementById('empty-state').textContent='err:'+e.message}},5000)", sr3);
+            sr3->Release();
+            logDebug("[Nav] JS injection done");
+        }
+        return S_OK;
+    }
+};
+
+// ── Controller completed handler ──
+
+struct ControllerHandler : ICoreWebView2CreateCoreWebView2ControllerCompletedHandler {
+    LONG ref = 1;
+    std::wstring url;
+
+    ControllerHandler(const std::wstring& u) : url(u) {}
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == IID_ICoreWebView2CreateCoreWebView2ControllerCompletedHandler ||
+            riid == IID_IUnknown) {
+            *ppv = this; AddRef(); return S_OK;
+        }
+        *ppv = NULL; return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&ref); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        LONG r = InterlockedDecrement(&ref);
+        if (r == 0) delete this;
+        return r;
+    }
+
+    HRESULT STDMETHODCALLTYPE Invoke(HRESULT result, ICoreWebView2Controller* controller) override {
+        logDebug("[CtorHandler] Invoke called");
+        if (FAILED(result) || !controller) {
+            logDebug(("[CtorHandler] FAILED result=0x" + std::to_string(static_cast<long>(result))).c_str());
+            return result;
+        }
+        g_controller = controller;
+        controller->AddRef();
+
+        controller->get_CoreWebView2(&g_webview);
+        logDebug("[CtorHandler] got webview");
+
+        RECT r;
+        GetClientRect(g_hwnd, &r);
+        controller->put_Bounds(r);
+        logDebug("[CtorHandler] bounds set");
+
+        // Register NavigationCompleted
+        NavHandler* navHandler = new NavHandler();
+        navHandler->AddRef();
+        EventRegistrationToken token = {};
+        g_webview->add_NavigationCompleted(navHandler, &token);
+        logDebug("[CtorHandler] Nav handler registered");
+
+        // Log the URL we're navigating to
+        std::string urlA(url.begin(), url.end());
+        logDebug(("[CtorHandler] Navigating to: " + urlA).c_str());
+        g_webview->Navigate(url.c_str());
+        logDebug("[CtorHandler] Navigate called");
+
+        ICoreWebView2Settings* settings = NULL;
+        g_webview->get_Settings(&settings);
+        if (settings) {
+            settings->put_IsScriptEnabled(TRUE);
+            settings->put_AreDevToolsEnabled(TRUE);
+            settings->Release();
+        }
+        logDebug("[CtorHandler] settings configured");
+
+        // Open DevTools for debugging (you can inspect the page)
+        g_webview->OpenDevToolsWindow();
+        logDebug("[CtorHandler] DevTools opened");
+
+        SetForegroundWindow(g_hwnd);
+        logDebug("[CtorHandler] done");
+        return S_OK;
+    }
+};
+
+// ── Environment completed handler ──
+
+struct EnvHandler : ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler {
+    LONG ref = 1;
+    std::wstring url;
+
+    EnvHandler(const std::wstring& u) : url(u) {}
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override {
+        if (riid == IID_ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler ||
+            riid == IID_IUnknown) {
+            *ppv = this; AddRef(); return S_OK;
+        }
+        *ppv = NULL; return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return InterlockedIncrement(&ref); }
+    ULONG STDMETHODCALLTYPE Release() override {
+        LONG r = InterlockedDecrement(&ref);
+        if (r == 0) delete this;
+        return r;
+    }
+
+    HRESULT STDMETHODCALLTYPE Invoke(HRESULT result, ICoreWebView2Environment* env) override {
+        logDebug("[EnvHandler] Invoke called");
+        if (FAILED(result) || !env) {
+            char buf[128];
+            snprintf(buf, sizeof(buf),
+                "WebView2 environment creation failed: 0x%08X\n"
+                "Please ensure WebView2 Runtime is installed.", result);
+            logDebug(("[EnvHandler] FAILED: " + std::string(buf)).c_str());
+            MessageBoxA(g_hwnd, buf, "JsonPilot", MB_OK | MB_ICONERROR);
+            return result;
+        }
+        logDebug("[EnvHandler] OK, creating controller...");
+        logDebug(("[EnvHandler] URL=" + std::string(url.begin(), url.end())).c_str());
+        ControllerHandler* ctrlHandler = new ControllerHandler(url);
+        ctrlHandler->AddRef();
+        env->CreateCoreWebView2Controller(g_hwnd, ctrlHandler);
+        ctrlHandler->Release();
+        logDebug("[EnvHandler] CreateCoreWebView2Controller returned");
+        return S_OK;
+    }
+};
+
+// ── Helpers ──
+
+static std::string getExeDir() {
+    char path[4096];
+    GetModuleFileNameA(NULL, path, sizeof(path));
+    std::string exePath(path);
+    size_t pos = exePath.find_last_of("\\/");
+    return (pos != std::string::npos) ? exePath.substr(0, pos) : ".";
+}
+
+static bool isBackendProcessRunning() {
+    HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snapshot == INVALID_HANDLE_VALUE) return false;
+
+    PROCESSENTRY32W pe = { sizeof(pe) };
+    bool found = false;
+    if (Process32FirstW(snapshot, &pe)) {
+        do {
+            if (_wcsicmp(pe.szExeFile, L"JsonPilotBackend.exe") == 0) {
+                found = true;
+                break;
+            }
+        } while (Process32NextW(snapshot, &pe));
+    }
+    CloseHandle(snapshot);
+    return found;
+}
+
+static bool startBackendProcess() {
+    std::string exeDir = getExeDir();
+    std::string backendPath = exeDir + "\\JsonPilotBackend.exe";
+    if (!fs::exists(fs::u8path(backendPath)))
+        return false;
+
+    SHELLEXECUTEINFOA sei = { sizeof(sei) };
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpFile = backendPath.c_str();
+    sei.lpParameters = "--backend";
+    sei.nShow = SW_HIDE;
+    if (!ShellExecuteExA(&sei)) return false;
+    if (sei.hProcess) CloseHandle(sei.hProcess);
+    return true;
+}
+
+typedef HRESULT (__stdcall *CreateCoreWebView2EnvironmentWithOptionsFunc)(
+    PCWSTR, PCWSTR, ICoreWebView2EnvironmentOptions*,
+    ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*);
+
+static void initWebView(HWND hwnd) {
+    logDebug("[initWebView] Starting...");
+    logDebug(("[initWebView] URL=" + g_targetUrl).c_str());
+    CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    logDebug("[initWebView] CoInitializeEx done");
+
+    HMODULE wv2Lib = LoadLibraryA("WebView2Loader.dll");
+    if (!wv2Lib) {
+        logDebug("[initWebView] FAILED LoadLibrary(WebView2Loader.dll)");
+        MessageBoxA(hwnd,
+            "WebView2Loader.dll not found.\n"
+            "Please install WebView2 Runtime.",
+            "JsonPilot", MB_OK | MB_ICONERROR);
+        return;
+    }
+    logDebug("[initWebView] LoadLibrary OK");
+
+    auto createEnvFn = (CreateCoreWebView2EnvironmentWithOptionsFunc)
+        GetProcAddress(wv2Lib, "CreateCoreWebView2EnvironmentWithOptions");
+    if (!createEnvFn) {
+        logDebug("[initWebView] FAILED GetProcAddress");
+        FreeLibrary(wv2Lib);
+        MessageBoxA(hwnd,
+            "Incompatible WebView2Loader.dll version.",
+            "JsonPilot", MB_OK | MB_ICONERROR);
+        return;
+    }
+    logDebug("[initWebView] GetProcAddress OK");
+
+    std::wstring wurl(g_targetUrl.begin(), g_targetUrl.end());
+    EnvHandler* envHandler = new EnvHandler(wurl);
+    envHandler->AddRef();
+
+    logDebug("[initWebView] Calling CreateCoreWebView2EnvironmentWithOptions...");
+    createEnvFn(NULL, NULL, NULL, envHandler);
+    envHandler->Release();
+    logDebug("[initWebView] CreateCoreWebView2EnvironmentWithOptions returned");
+    // Keep wv2Lib loaded — async callbacks may still reference it
+}
+
+// ── Window Proc ──
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    switch (msg) {
+        case WM_SIZE:
+            if (g_controller) {
+                RECT r;
+                GetClientRect(hwnd, &r);
+                g_controller->put_Bounds(r);
+            }
+            return 0;
+        case WM_DESTROY:
+            if (g_controller) { g_controller->Release(); g_controller = NULL; }
+            if (g_webview) { g_webview->Release(); g_webview = NULL; }
+            PostQuitMessage(0);
+            return 0;
+        case WM_ERASEBKGND:
+            return 1;
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+// ── Entry Point ──
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, PSTR cmdLine, int showCmd) {
+    (void)cmdLine; (void)showCmd;
+
+    // Parse command line for file path
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    std::string filePath;
+    if (argv && argc > 1) {
+        std::wstring ws(argv[1]);
+        if (!ws.empty() && ws[0] != L'-') {
+            int len = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, NULL, 0, NULL, NULL);
+            if (len > 0) {
+                filePath.resize(len - 1);
+                WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, &filePath[0], len, NULL, NULL);
+            }
+        }
+    }
+    if (argv) LocalFree(argv);
+
+    // Use fixed port 9391 (agreed between viewer and backend)
+    constexpr int port = JSONEDITOR_PORT;
+
+    // Check if backend process is already running
+    if (!isBackendProcessRunning()) {
+        if (!startBackendProcess()) {
+            MessageBoxA(NULL,
+                "Failed to start JsonPilot backend.\n"
+                "Please restart the application.",
+                "JsonPilot", MB_OK | MB_ICONERROR);
+            return 1;
+        }
+        // Give the backend a moment to start up
+        Sleep(1500);
+    }
+
+    // Build target URL
+    g_targetUrl = "http://127.0.0.1:" + std::to_string(port) + "/index.html";
+    if (!filePath.empty()) {
+        g_targetUrl += "?file=" + urlEncode(filePath);
+    }
+    logDebug(("[MAIN] Target URL: " + g_targetUrl).c_str());
+
+    // Register window class
+    WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInstance;
+    wc.hIcon = LoadIconW(hInstance, MAKEINTRESOURCEW(101));
+    wc.hIconSm = (HICON)LoadImageW(hInstance, MAKEINTRESOURCEW(101),
+                    IMAGE_ICON, GetSystemMetrics(SM_CXSMICON),
+                    GetSystemMetrics(SM_CYSMICON), 0);
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+    wc.lpszClassName = L"JsonPilotViewer";
+    RegisterClassExW(&wc);
+
+    // Create window (shown before WebView2 init so the parent is visible)
+    RECT wr = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
+    AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
+    int winX = (GetSystemMetrics(SM_CXSCREEN) - (wr.right - wr.left)) / 2;
+    int winY = (GetSystemMetrics(SM_CYSCREEN) - (wr.bottom - wr.top)) / 2;
+
+    g_hwnd = CreateWindowExW(0, L"JsonPilotViewer", L"JsonPilot",
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE, winX, winY,
+        wr.right - wr.left, wr.bottom - wr.top,
+        NULL, NULL, hInstance, NULL);
+    if (!g_hwnd) {
+        MessageBoxA(NULL, "Failed to create window.", "JsonPilot", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
+    // Dark title bar (Win 10 20H1+)
+    BOOL darkMode = TRUE;
+    DwmSetWindowAttribute(g_hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &darkMode, sizeof(darkMode));
+
+    // Initialize WebView2 (async, shows window when ready)
+    initWebView(g_hwnd);
+
+    // Message loop
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+
+    CoUninitialize();
+    return 0;
+}

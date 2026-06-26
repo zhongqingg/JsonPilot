@@ -7,6 +7,30 @@
 <link rel="icon" href="icon.png" type="image/png">
 <link rel="shortcut icon" href="icon.ico" type="image/x-icon">
 <link rel="stylesheet" href="style.css">
+<style>
+/* DEBUG: colored borders to identify each element */
+html{background:#1e1e1e!important}
+body{background:#111!important;color:#fff!important;margin:0!important;font-family:system-ui,sans-serif!important}
+#app{display:flex!important;height:100vh!important;background:#1a1a1a!important;border:3px solid red!important}
+#sidebar{width:260px!important;min-width:200px!important;background:#252526!important;border:3px solid #00ff00!important;display:flex!important;flex-direction:column!important;overflow:hidden!important}
+#main-content{flex:1!important;display:flex!important;flex-direction:column!important;overflow:hidden!important;background:#1a1a1a!important;border:3px solid #0088ff!important}
+#toolbar{padding:8px 16px!important;background:#2d2d2d!important;border:2px solid #ff8800!important;display:flex!important;align-items:center!important;gap:8px!important}
+#editor-area{flex:1!important;overflow:auto!important;padding:16px!important;border:2px solid #ffff00!important}
+#empty-state{color:#888!important;font-size:14px!important;text-align:center!important;margin-top:40px!important;border:1px solid #ff00ff!important;padding:10px!important}
+#file-tree{flex:1!important;overflow-y:auto!important;padding:4px 0!important;border:1px solid cyan!important}
+#path-bar{padding:8px!important;display:flex!important;gap:4px!important;border:1px solid orange!important}
+#sidebar-header{padding:12px 16px!important;background:#2d2d2d!important;border:1px solid pink!important}
+#sidebar-header h3{margin:0!important;font-size:14px!important;color:#d4d4d4!important}
+#path-input{flex:1!important;background:#3c3c3c!important;border:1px solid #555!important;color:#d4d4d4!important;padding:4px 8px!important;border-radius:3px!important;font-size:12px!important}
+#toolbar button{background:#3c3c3c!important;border:1px solid #555!important;color:#d4d4d4!important;padding:4px 12px!important;border-radius:3px!important;cursor:pointer!important;font-size:12px!important}
+#toolbar button:disabled{opacity:0.4!important;cursor:default!important}
+#file-path-display{color:#888!important;font-size:12px!important;flex:1!important}
+.hidden{display:none!important}
+.file-tree-item{padding:3px 12px!important;cursor:pointer!important;font-size:13px!important;color:#d4d4d4!important;white-space:nowrap!important;display:flex!important;align-items:center!important;gap:4px!important}
+.file-tree-item:hover{background:#2a2d2e!important}
+.file-tree-item .icon{font-size:12px!important;width:16px!important;text-align:center!important;flex-shrink:0!important}
+.file-tree-item .label{overflow:hidden!important;text-overflow:ellipsis!important}
+</style>
 </head>
 <body>
 <div id="app">
