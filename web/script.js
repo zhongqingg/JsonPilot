@@ -618,7 +618,7 @@ async function init() {
     }
     if (missingBridge.length > 0) {
         for (var attempt = 0; attempt < 30; attempt++) {
-            await new Promise(function(r) { setTimeout(r, 500); });
+            await new Promise(function(r) { setTimeout(r, 100); });
             var allReady = true;
             for (var j = 0; j < missingBridge.length; j++) {
                 if (typeof window[missingBridge[j]] === "undefined") { allReady = false; break; }
