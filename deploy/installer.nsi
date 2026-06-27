@@ -84,6 +84,18 @@ Section -Post
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" \
         "JsonPilotBackend" '"$INSTDIR\JsonPilotBackend.exe" --backend'
 
+    ; Register file association for .json
+    WriteRegStr HKCU "Software\Classes\Applications\JsonPilotViewer.exe\shell\open\command" \
+        "" '"$INSTDIR\JsonPilotViewer.exe" "%1"'
+    WriteRegStr HKCU "Software\Classes\Applications\JsonPilotViewer.exe\SupportedTypes" \
+        ".json" ""
+    WriteRegStr HKCU "Software\Classes\JsonPilot.json\DefaultIcon" \
+        "" "$INSTDIR\JsonPilotViewer.exe,0"
+    WriteRegStr HKCU "Software\Classes\JsonPilot.json\shell\open\command" \
+        "" '"$INSTDIR\JsonPilotViewer.exe" "%1"'
+    WriteRegStr HKCU "Software\Classes\.json\OpenWithProgids" \
+        "JsonPilot.json" ""
+
     WriteRegStr HKLM "${PRODUCT_DIR_REGKEY}" "" "$INSTDIR\JsonPilotViewer.exe"
     WriteRegStr HKLM "${PRODUCT_DIR_REGKEY}" "Path" "$INSTDIR"
     WriteRegStr HKLM "${PRODUCT_UNINST_KEY}" "DisplayName" "${PRODUCT_NAME}"
@@ -100,6 +112,11 @@ Section Uninstall
 
     ; Remove auto-start registry entry
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "JsonPilotBackend"
+
+    ; Remove file association
+    DeleteRegKey HKCU "Software\Classes\Applications\JsonPilotViewer.exe"
+    DeleteRegKey HKCU "Software\Classes\JsonPilot.json"
+    DeleteRegValue HKCU "Software\Classes\.json\OpenWithProgids" "JsonPilot.json"
 
     Delete "$INSTDIR\uninst.exe"
     Delete "$INSTDIR\JsonPilotBackend.exe"
