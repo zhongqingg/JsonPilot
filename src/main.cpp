@@ -577,7 +577,8 @@ private:
                         pFolder->Release();
                     }
                 }
-                hr = pDlg->Show(NULL);
+                HWND hParent = FindWindowW(L"JsonPilotViewer", NULL);
+                hr = pDlg->Show(hParent);
                 if (SUCCEEDED(hr)) {
                     IShellItem* pItem = NULL;
                     hr = pDlg->GetResult(&pItem);
@@ -830,7 +831,8 @@ private:
                         pFolder->Release();
                     }
                 }
-                hr = pDlg->Show(NULL);
+                HWND hParent = FindWindowW(L"JsonPilotViewer", NULL);
+                hr = pDlg->Show(hParent);
                 if (SUCCEEDED(hr)) {
                     IShellItem* pItem = NULL;
                     hr = pDlg->GetResult(&pItem);
