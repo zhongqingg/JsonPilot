@@ -818,9 +818,11 @@ async function applyConfigTheme() {
         const config = JSON.parse(configStr);
         const theme = config.theme || "dark";
         document.documentElement.dataset.theme = theme;
+        document.documentElement.removeAttribute('style');
         updateThemeButton(theme);
     } catch (e) {
         document.documentElement.dataset.theme = "dark";
+        document.documentElement.removeAttribute('style');
         updateThemeButton("dark");
     }
 }
@@ -829,6 +831,7 @@ function toggleTheme() {
     const current = document.documentElement.dataset.theme;
     const next = current === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = next;
+    document.documentElement.removeAttribute('style');
     updateThemeButton(next);
     set_theme(next);
     try {

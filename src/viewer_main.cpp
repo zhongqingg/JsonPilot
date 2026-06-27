@@ -29,6 +29,7 @@ static HWND g_hwnd = NULL;
 static ICoreWebView2Controller* g_controller = NULL;
 static ICoreWebView2* g_webview = NULL;
 static std::string g_targetUrl;
+static bool g_isLightTheme = false;
 
 // ── Navigation completed handler ──
 
@@ -111,8 +112,8 @@ struct WebMsgHandler : ICoreWebView2WebMessageReceivedEventHandler {
             std::wstring w(msg);
             std::string s(w.begin(), w.end());
             CoTaskMemFree(msg);
-            if (s == "theme:light") setTitleBarTheme(false);
-            else if (s == "theme:dark") setTitleBarTheme(true);
+            if (s == "theme:light") { setTitleBarTheme(false); g_isLightTheme = true; }
+            else if (s == "theme:dark") { setTitleBarTheme(true); g_isLightTheme = false; }
         }
         return S_OK;
     }
@@ -155,11 +156,13 @@ struct ControllerHandler : ICoreWebView2CreateCoreWebView2ControllerCompletedHan
         RECT r;
         GetClientRect(g_hwnd, &r);
         controller->put_Bounds(r);
-        // Set dark background (#1e1e1e) to prevent white flash before page loads
+        // Set theme-appropriate background to prevent flash before page loads
         {
             ICoreWebView2Controller2* ctrl2 = NULL;
             if (SUCCEEDED(controller->QueryInterface(IID_ICoreWebView2Controller2, (void**)&ctrl2)) && ctrl2) {
-                COREWEBVIEW2_COLOR bgColor = { 255, 30, 30, 30 };
+                COREWEBVIEW2_COLOR bgColor = g_isLightTheme
+                    ? COREWEBVIEW2_COLOR{ 255, 255, 255, 255 }
+                    : COREWEBVIEW2_COLOR{ 255, 30, 30, 30 };
                 ctrl2->put_DefaultBackgroundColor(bgColor);
                 ctrl2->Release();
             }
@@ -247,14 +250,16 @@ struct EnvHandler : ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler {
         ControllerHandler* ctrlHandler = new ControllerHandler(url);
         ctrlHandler->AddRef();
 
-        // Try to set dark background before controller creation (avoids white flash)
+        // Try to set theme background before controller creation (avoids white flash)
         ICoreWebView2Environment10* env10 = NULL;
         if (SUCCEEDED(env->QueryInterface(IID_ICoreWebView2Environment10, (void**)&env10)) && env10) {
             ICoreWebView2ControllerOptions* options = NULL;
             if (SUCCEEDED(env10->CreateCoreWebView2ControllerOptions(&options)) && options) {
                 ICoreWebView2ControllerOptions3* opts3 = NULL;
                 if (SUCCEEDED(options->QueryInterface(IID_ICoreWebView2ControllerOptions3, (void**)&opts3)) && opts3) {
-                    COREWEBVIEW2_COLOR bg = { 255, 30, 30, 30 };
+                    COREWEBVIEW2_COLOR bg = g_isLightTheme
+                        ? COREWEBVIEW2_COLOR{ 255, 255, 255, 255 }
+                        : COREWEBVIEW2_COLOR{ 255, 30, 30, 30 };
                     opts3->put_DefaultBackgroundColor(bg);
                     env10->CreateCoreWebView2ControllerWithOptions(g_hwnd, opts3, ctrlHandler);
                     opts3->Release();
@@ -383,7 +388,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             HDC dc = (HDC)wParam;
             RECT r;
             GetClientRect(hwnd, &r);
-            HBRUSH brush = CreateSolidBrush(RGB(30, 30, 30));
+            HBRUSH brush = CreateSolidBrush(g_isLightTheme ? RGB(255, 255, 255) : RGB(30, 30, 30));
             FillRect(dc, &r, brush);
             DeleteObject(brush);
             return 1;
@@ -453,6 +458,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, PSTR cmdLine, int showCmd) {
     wc.lpszClassName = L"JsonPilotViewer";
     RegisterClassExW(&wc);
 
+    // Read theme from config.json
+    g_isLightTheme = loadThemeFromConfig();
+
     // Create window (shown before WebView2 init so the parent is visible)
     RECT wr = { 0, 0, WINDOW_WIDTH, WINDOW_HEIGHT };
     AdjustWindowRect(&wr, WS_OVERLAPPEDWINDOW, FALSE);
@@ -468,9 +476,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, PSTR cmdLine, int showCmd) {
         return 1;
     }
 
-    // Title bar theme from config.json
-    bool isLight = loadThemeFromConfig();
-    setTitleBarTheme(!isLight);
+    // Title bar theme (must be after CreateWindow so g_hwnd is valid)
+    setTitleBarTheme(!g_isLightTheme);
 
     // Initialize WebView2 (async, shows window when ready)
     initWebView(g_hwnd);

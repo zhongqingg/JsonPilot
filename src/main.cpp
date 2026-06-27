@@ -233,32 +233,55 @@ public:
             logDebug("[INIT] Mode: directory-browser");
         }
 
-        // Inject mode & file content into HTML before page loads — avoids WebSocket binding delay
+        // Inject theme background & mode data into HTML before page loads — avoids flash
         bool htmlPatched = false;
         std::string htmlBackup;
-        if (m_singleFileMode) {
-            std::ifstream fi(fs::u8path(m_singleFilePath), std::ios::binary);
-            std::string fileContent;
-            bool fileReadOk = fi.is_open();
-            if (fileReadOk) {
-                fileContent.assign((std::istreambuf_iterator<char>(fi)), std::istreambuf_iterator<char>());
-                fi.close();
+        std::string originalHtml;
+        std::string indexPath = webPath + "\\index.html";
+        std::ifstream fhtml(indexPath);
+        if (fhtml.is_open()) {
+            std::stringstream ss;
+            ss << fhtml.rdbuf();
+            originalHtml = ss.str();
+            htmlBackup = originalHtml;
+            fhtml.close();
+
+            // Build injection string
+            std::string injection;
+
+            // Inject data-theme on <html> so CSS applies correct theme before JS runs
+            {
+                size_t htmlPos = htmlBackup.find("<html");
+                if (htmlPos != std::string::npos) {
+                    size_t htmlEnd = htmlBackup.find(">", htmlPos);
+                    if (htmlEnd != std::string::npos) {
+                        std::string tag = htmlBackup.substr(htmlPos, htmlEnd - htmlPos + 1);
+                        std::string newTag = "<html data-theme=\"" + theme + "\"";
+                        size_t attrStart = tag.find(' ');
+                        if (attrStart != std::string::npos)
+                            newTag += tag.substr(attrStart);
+                        else
+                            newTag += ">";
+                        htmlBackup.replace(htmlPos, htmlEnd - htmlPos + 1, newTag);
+                    }
+                }
             }
 
-            std::string indexPath = webPath + "\\index.html";
-            std::ifstream fhtml(indexPath);
-            if (fhtml.is_open()) {
-                std::stringstream ss;
-                ss << fhtml.rdbuf();
-                htmlBackup = ss.str();
-                fhtml.close();
+            // __pilotMode injection for single-file mode
+            if (m_singleFileMode) {
+                std::ifstream fi(fs::u8path(m_singleFilePath), std::ios::binary);
+                std::string fileContent;
+                bool fileReadOk = fi.is_open();
+                if (fileReadOk) {
+                    fileContent.assign((std::istreambuf_iterator<char>(fi)), std::istreambuf_iterator<char>());
+                    fi.close();
+                }
 
                 json mj;
                 mj["singleFile"] = true;
                 mj["filePath"] = fs::absolute(fs::u8path(m_singleFilePath)).u8string();
                 std::string modeJson = mj.dump();
 
-                // Escape file content for JS single-quoted string
                 std::string escaped;
                 if (fileReadOk) {
                     escaped.reserve(fileContent.size() + 16);
@@ -272,21 +295,21 @@ public:
                     }
                 }
 
-                std::string modeScript = "<script>window.__pilotMode=" + modeJson
+                injection += "<script>window.__pilotMode=" + modeJson
                     + (fileReadOk ? ";window.__pilotFileContent='" + escaped + "'" : "")
-                    + ";</script>";
+                    + ";</script>\n";
+            }
 
-                size_t pos = htmlBackup.find("<head>");
-                if (pos != std::string::npos) {
-                    std::string modified = htmlBackup;
-                    modified.insert(pos + 6, "\n" + modeScript);
-                    std::ofstream fo(indexPath);
-                    if (fo.is_open()) {
-                        fo << modified;
-                        fo.close();
-                        htmlPatched = true;
-                        logDebug((std::string("[INIT] Injected __pilotMode") + (fileReadOk ? "+fileContent" : "") + " into index.html").c_str());
-                    }
+            size_t pos = htmlBackup.find("</head>");
+            if (pos != std::string::npos) {
+                std::string modified = htmlBackup;
+                modified.insert(pos, injection + "\n");
+                std::ofstream fo(indexPath);
+                if (fo.is_open()) {
+                    fo << modified;
+                    fo.close();
+                    htmlPatched = true;
+                    logDebug((std::string("[INIT] Injected theme:" + std::string(theme) + (m_singleFileMode ? " +__pilotMode" : "")).c_str()));
                 }
             }
         }
@@ -298,10 +321,9 @@ public:
 
         // Restore original HTML immediately — page is already loaded
         if (htmlPatched) {
-            std::string indexPath = webPath + "\\index.html";
             std::ofstream fo(indexPath);
             if (fo.is_open()) {
-                fo << htmlBackup;
+                fo << originalHtml;
                 fo.close();
                 logDebug("[INIT] Restored original index.html");
             }
@@ -369,10 +391,14 @@ public:
     }
 
     void runBackground() {
+        loadConfig();
         std::string webPath = resolveWebPath();
         logDebug(("[BACKEND] Serving web folder: " + webPath).c_str());
         logDebug(("[BACKEND] JSON root dir: " + rootDir).c_str());
         logDebug("[BACKEND] Mode: directory-browser (multi-client)");
+
+        // Inject data-theme on <html> so CSS applies correct theme immediately
+        injectDataThemeOnHtml();
 
         // Enable multi-client mode so multiple viewers can connect
         webui_set_config(multi_client, true);
@@ -475,6 +501,36 @@ private:
             return exePath.substr(0, pos);
         }
         return ".";
+    }
+
+    void injectDataThemeOnHtml() {
+        std::string webPath = resolveWebPath();
+        std::string indexPath = webPath + "\\index.html";
+        std::ifstream fi(indexPath);
+        if (!fi.is_open()) return;
+        std::stringstream ss;
+        ss << fi.rdbuf();
+        std::string html = ss.str();
+        fi.close();
+
+        size_t htmlPos = html.find("<html");
+        if (htmlPos == std::string::npos) return;
+        size_t htmlEnd = html.find(">", htmlPos);
+        if (htmlEnd == std::string::npos) return;
+
+        std::string tag = html.substr(htmlPos, htmlEnd - htmlPos + 1);
+        std::string newTag = "<html data-theme=\"" + theme + "\"";
+        size_t attrStart = tag.find(' ');
+        if (attrStart != std::string::npos)
+            newTag += tag.substr(attrStart);
+        else
+            newTag += ">";
+        html.replace(htmlPos, htmlEnd - htmlPos + 1, newTag);
+        std::ofstream fo(indexPath);
+        if (fo.is_open()) {
+            fo << html;
+            fo.close();
+        }
     }
 
     void loadConfig() {
@@ -625,6 +681,7 @@ private:
         if (t == "light" || t == "dark") {
             theme = t;
             saveConfig();
+            injectDataThemeOnHtml();
             result["success"] = true;
         } else {
             result["success"] = false;
