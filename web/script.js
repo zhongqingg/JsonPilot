@@ -1924,10 +1924,12 @@ function startEditValue(span, oldVal, path) {
         else if (raw === "false") newVal = false;
         else if (!isNaN(raw) && raw.trim() !== "") newVal = Number(raw);
         else newVal = raw;
-        pushSnapshot();
-        recordChange('modified', path, { oldVal, newVal });
-        setValueByPath(jsonData, path, newVal);
-        markModified();
+        if (newVal !== oldVal) {
+            pushSnapshot();
+            recordChange('modified', path, { oldVal, newVal });
+            setValueByPath(jsonData, path, newVal);
+            markModified();
+        }
         const state = getExpandedState();
         rerenderJson();
         restoreExpandedState(state);
