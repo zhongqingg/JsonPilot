@@ -405,17 +405,21 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, PSTR cmdLine, int showCmd) {
     // Enable per-monitor DPI awareness for crisp text rendering
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
-    // Parse command line for file path
+    // Parse command line for file path, resolving relative paths to absolute
     int argc = 0;
     LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     std::string filePath;
     if (argv && argc > 1) {
         std::wstring ws(argv[1]);
         if (!ws.empty() && ws[0] != L'-') {
-            int len = WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, NULL, 0, NULL, NULL);
-            if (len > 0) {
-                filePath.resize(len - 1);
-                WideCharToMultiByte(CP_UTF8, 0, ws.c_str(), -1, &filePath[0], len, NULL, NULL);
+            wchar_t absPathW[MAX_PATH];
+            DWORD absLen = GetFullPathNameW(ws.c_str(), MAX_PATH, absPathW, NULL);
+            if (absLen > 0 && absLen < MAX_PATH) {
+                int len = WideCharToMultiByte(CP_UTF8, 0, absPathW, -1, NULL, 0, NULL, NULL);
+                if (len > 0) {
+                    filePath.resize(len - 1);
+                    WideCharToMultiByte(CP_UTF8, 0, absPathW, -1, &filePath[0], len, NULL, NULL);
+                }
             }
         }
     }
