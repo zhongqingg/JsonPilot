@@ -3,7 +3,7 @@
 ; Build: cd deploy && makensis installer.nsi
 
 !define PRODUCT_NAME "JsonPilot"
-!define PRODUCT_VERSION "1.3.0"
+!define PRODUCT_VERSION "1.4.0"
 !define PRODUCT_PUBLISHER "Donchy"
 !define PRODUCT_WEB_SITE "https://github.com/zhongqingg/JsonPilot"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\JsonPilotViewer.exe"
