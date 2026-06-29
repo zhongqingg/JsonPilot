@@ -14,35 +14,15 @@
 
 ## Features
 
-**Tree-based JSON Editor** — Browse and edit deeply nested JSON structures in a collapsible tree view. No more scrolling through raw text in a plain editor. Double-click any key or value to edit inline.
+**Tree-based JSON Editor** — Browse and edit deeply nested JSON structures in a collapsible tree view. Double-click any key or value to edit inline. Full undo/redo stack (up to 50 levels) with visual diff markers highlighting added, modified, and deleted nodes.
 
-**Multi-file Workspace** — Point the app at a root directory and it scans all `.json` files recursively. The sidebar shows a full file tree, making it easy to switch between related configuration files, data exports, or API responses.
+**Session / Project Management** — Organize your work into named sessions, each pointing to a different directory. The sidebar lists all sessions with expand/collapse file trees. Add, rename, delete sessions, or create new files and folders directly from the context menu.
 
-**Undo/Redo** — Full undo/redo stack (up to 50 levels). Every edit — key rename, value change, node deletion, duplication, replace — is tracked. Work fearlessly.
+**Search & Replace** — Find any key, value, or string across the entire JSON document. Replace in a specific scope (current node, current value) or globally. All matches highlighted in real time.
 
-**Search & Replace** — Find any key, value, or string across the entire JSON document. Replace in a specific scope (current node, current value) or globally. All matches are highlighted in real time.
-
-**Change Tracking (Diff)** — Visual diff markers highlight added, modified, and deleted nodes. See exactly what changed since the last save.
-
-**Dark & Light Themes** — Toggle between a dark theme (default, for long editing sessions) and a light theme with a single click.
+**Dark & Light Themes** — Toggle between dark and light themes with a single click. The title bar color follows the selected theme. Theme persists across sessions via `config.json`.
 
 **Drag & Drop** — Drag any `.json` file from your file explorer directly into the editor window to open it.
-
-**Save As with Native Dialog** — Save files anywhere on your filesystem using the native Windows save dialog, or type a relative path to save within the workspace root.
-
-**Add Child Items** — Right-click any object or array node to add new children with arbitrary JSON values. Supports both object keys and array elements.
-
-**Duplicate & Delete** — Right-click any node to duplicate it (auto-renames to avoid conflicts) or delete it. Deleted items leave a visual marker so you can see what was removed.
-
-**Unsaved Changes Protection** — Closing the window with unsaved edits prompts a confirmation dialog.
-
-## Screenshot
-
-<p align="center">
-  <img src="src/icon.png" alt="JsonPilot" width="256">
-</p>
-
-> *A native desktop application — clean, fast, and built with a web-based UI powered by WebUI.*
 
 ## Build Environment
 
@@ -53,40 +33,9 @@
 | **CMake** | 3.18+ | Build system |
 | **Visual Studio** | 2022 | With C++ Desktop Development workload (MSVC toolchain) |
 | **Windows SDK** | 10.0+ | Required for WebView2 support |
-| **WebView2 Runtime** | Any | Pre-installed on Windows 10/11; the app embeds WebView2 via the WebUI library |
-
-### Third-party Libraries (included in `thirdparty/`)
-
-| Library | Version | Purpose |
-|---------|---------|---------|
-| [WebUI](https://github.com/webui-dev/webui) | 2.5.0-beta | Cross-platform web UI library for C++. Uses the system's native WebView (Edge WebView2 on Windows) to render HTML/CSS/JS as the app interface. No bundled browser — lightweight and fast startup. |
-| [nlohmann/json](https://github.com/nlohmann/json) | 3.11.3 | JSON for Modern C++. Header-only library for parsing, manipulating, and serializing JSON with an intuitive STL-like API. |
-
-## Project Structure
-
-```
-JsonPilot/
-├── CMakeLists.txt          # CMake build configuration
-├── src/
-│   ├── main.cpp            # C++ backend: file I/O, window management, WebUI bindings
-│   ├── resources.rc.in     # Windows resource template (icon, version info)
-│   ├── icon.ico            # Application icon (multi-resolution Windows ICO)
-│   └── icon.png            # Application icon (high-resolution PNG)
-├── web/
-│   ├── index.html          # Main UI layout (sidebar, toolbar, editor)
-│   ├── script.js           # Frontend logic: tree rendering, editing, search, undo/redo
-│   └── style.css           # Complete stylesheet with dark/light theme support
-├── thirdparty/
-│   ├── webui/              # WebUI library (includes WebView2 integration)
-│   └── nlohmannjson/       # nlohmann JSON library (header-only)
-├── data/                   # Default JSON data directory (configurable via config.txt)
-├── build/                  # CMake build output directory
-└── deploy/                 # Packaging output (created by packaging step)
-```
+| **WebView2 Runtime** | Any | Pre-installed on Windows 10/11 |
 
 ## Building from Source
-
-### Quick Build (Windows)
 
 ```powershell
 # 1. Clone the repository
@@ -99,102 +48,33 @@ cmake -B build -S . -G "Visual Studio 17 2022" -A x64
 # 3. Build
 cmake --build build --config Release
 
-# 4. The executable is at:
-#    build\Release\JsonPilot.exe
+# 4. The executables are at:
+#    build\Release\JsonPilotBackend.exe
+#    build\Release\JsonPilotViewer.exe
 ```
-
-### CMake Configuration Options
-
-```powershell
-# Build type: Release (recommended) or Debug
-cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
-
-# Specify Visual Studio generator explicitly
-cmake -B build -S . -G "Visual Studio 17 2022" -A x64
-
-# For MinGW-w64 (alternative)
-cmake -B build -S . -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-```
-
-### Build Notes
-
-- The build automatically copies the `web/` folder and icon files to the output directory via `POST_BUILD` commands.
-- On Windows, the executable is built as a GUI application (`WIN32` flag in CMake, using `WinMain` entry point — no console window).
-- The `resources.rc` file is generated from `resources.rc.in` by CMake's `configure_file`, embedding the icon and version information into the executable.
-- `WebUI` library is compiled from source as a CMake subdirectory. It links against `ole32`, `runtimeobject`, and `shell32` on Windows.
-- The app uses `C++17` (`std::filesystem` for path operations) and `C99`.
 
 ## Usage
 
-1. **Configure the root directory:** Edit `config.txt` next to the executable:
-   ```
-   root_dir=data
-   theme=dark
-   ```
-   Set `root_dir` to an absolute or relative path containing your JSON files.
+**JsonPilot** uses a dual-process architecture:
+- **JsonPilotBackend.exe** — headless HTTP+WebSocket server, auto-starts at boot. Manages file I/O, session configuration, and serves the web UI.
+- **JsonPilotViewer.exe** — the desktop window you interact with. Launches the backend if needed and connects to it.
 
-2. **Launch `JsonPilot.exe`** — the file tree loads automatically.
-
-3. **Select a file** from the sidebar to open it in the tree editor.
-
-4. **Edit values** by double-clicking any key or value, type your changes, and press Enter.
-
-5. **Right-click** any node for context menu actions: Add Child, Copy, Duplicate, Delete, Replace.
-
-6. **Search** with `Ctrl+F` to find text across the document. Use `Ctrl+H` for replace.
-
-7. **Save** your changes with the Save button or `Ctrl+S`. Use Save As to write to a new file.
-
-## Packaging & Deployment
-
-To create a distributable package:
+Launch the viewer directly — it handles everything:
 
 ```powershell
-# Build in Release mode
-cmake --build build --config Release
+# Open the viewer (backend starts automatically if not running)
+JsonPilotViewer.exe
 
-# The deploy folder structure:
-# deploy/JsonPilot/
-# ├── JsonPilot.exe
-# ├── config.txt
-# ├── web/
-# │   ├── index.html
-# │   ├── script.js
-# │   ├── style.css
-# │   ├── icon.png
-# │   └── icon.ico
-# └── data/
-#     └── (your JSON files)
+# Open a specific JSON file
+JsonPilotViewer.exe path\to\file.json
+
+# Associate .json files (done by installer):
+# Double-click any .json file to open it in JsonPilot
 ```
 
-### Using NSIS Installer (recommended)
+### Managing Sessions
 
-An NSIS script (`installer.nsi`) can be provided to create a standard Windows installer that:
-- Installs to `Program Files\JsonPilot`
-- Creates Start Menu and Desktop shortcuts
-- Registers an uninstaller
-
-### Portable Distribution
-
-Alternatively, simply zip the `deploy/JsonPilot/` folder — the application is fully self-contained and requires no installation. Just extract and run `JsonPilot.exe`.
-
-## Architecture
-
-JsonPilot uses a **native C++ backend + web frontend** architecture:
-
-- **Backend (C++):** File system access, JSON parsing, memory management, native dialogs. Uses Win32 API for window management and WebUI for rendering.
-- **Frontend (HTML/CSS/JS):** Tree UI rendering, inline editing, search/replace, undo/redo. Runs inside the system WebView2 control.
-- **Communication:** The C++ backend exposes functions to JavaScript via WebUI bindings (`get_file_tree`, `load_file`, `save_file`, `save_file_as`, `get_config`, `show_save_dialog`). JavaScript calls these as async functions.
-
-This architecture provides the best of both worlds: native file system access and OS integration from C++, with the flexibility and development speed of a web-based UI.
-
-## License
-
-MIT License
-
----
-
-<p align="center">
-  <sub>Built with C++, WebUI, and nlohmann/json</sub>
-</p>
+1. Click **+** in the sidebar to add a project session (enter a name and select a directory).
+2. Expand a session to browse all `.json` files in that directory.
+3. Click any file to open it in the tree editor.
+4. Right-click a session header or file/folder for context menu actions (New Folder, New JSON File, Rename, Delete, Copy).
