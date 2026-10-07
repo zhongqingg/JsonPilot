@@ -1,0 +1,11 @@
+# Repo stores LF; checkout uses CRLF (Windows native)
+* text=auto eol=crlf
+
+*.png binary
+*.ico binary
+*.dll binary
+*.exe binary
+*.lib binary
+*.exp binary
+*.obj binary
+*.pdb binary
