@@ -14,12 +14,7 @@
 namespace fs = std::filesystem;
 
 static void logDebug(const char* msg) {
-    std::time_t t = std::time(nullptr);
-    char buf[32] = {};
-    std::strftime(buf, sizeof(buf), "%H:%M:%S", std::localtime(&t));
-    std::string line = std::string("[") + buf + "] " + msg + "\n";
-    std::ofstream log("viewer_debug.log", std::ios::app);
-    if (log.is_open()) { log << line; log.close(); }
+    writeAppLog("JsonPilotViewer.log", logLine(msg));
 }
 
 static constexpr int WINDOW_WIDTH = 1280;

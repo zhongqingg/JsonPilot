@@ -18,14 +18,10 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 static void logDebug(const char* msg) {
-    std::time_t t = std::time(nullptr);
-    char buf[32] = {};
-    std::strftime(buf, sizeof(buf), "%H:%M:%S", std::localtime(&t));
-    std::string line = std::string("[") + buf + "] " + msg + "\n";
+    std::string line = logLine(msg);
     std::cout << line;
     OutputDebugStringA(line.c_str());
-    std::ofstream log("JsonPilot_debug.log", std::ios::app);
-    if (log.is_open()) { log << line; log.close(); }
+    writeAppLog("JsonPilotBackend.log", line);
 }
 
 #define WM_SETUP_DRAGDROP (WM_APP + 1)
