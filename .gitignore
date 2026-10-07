@@ -10,9 +10,12 @@ build/
 Thumbs.db
 data/
 config.txt
-deploy/
+deploy/*
+!deploy/installer.nsi
+!deploy/deploy.bat
+!deploy/version.txt
+
 tools/
 .cache/
 src/icodir/
-thirdparty/
 backup/

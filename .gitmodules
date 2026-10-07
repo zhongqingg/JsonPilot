@@ -1,6 +1,8 @@
 [submodule "thirdparty/webui"]
 	path = thirdparty/webui
 	url = https://github.com/webui-dev/webui.git
+	ignore = dirty
 [submodule "thirdparty/nlohmannjson"]
 	path = thirdparty/nlohmannjson
 	url = https://github.com/nlohmann/json.git
+	ignore = dirty

@@ -26,4 +26,13 @@ if errorlevel 1 exit /b 1
 cmake --build "%BUILD_DIR%"
 if errorlevel 1 exit /b 1
 
+:: Auto-deploy after a successful build.
+:: Usage: build.bat [version]  (omit version to reuse the last one)
+call "%~dp0deploy\deploy.bat" %1
+if errorlevel 1 (
+    echo.
+    echo ERROR: deploy step failed!
+    exit /b 1
+)
+
 endlocal

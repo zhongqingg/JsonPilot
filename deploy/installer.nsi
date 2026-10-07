@@ -3,7 +3,10 @@
 ; Build: cd deploy && makensis installer.nsi
 
 !define PRODUCT_NAME "JsonPilot"
-!define PRODUCT_VERSION "1.4.0"
+; Version can be overridden from the command line: makensis /DPRODUCT_VERSION=x.y.z installer.nsi
+!ifndef PRODUCT_VERSION
+    !define PRODUCT_VERSION "1.5.0"
+!endif
 !define PRODUCT_PUBLISHER "Donchy"
 !define PRODUCT_WEB_SITE "https://github.com/zhongqingg/JsonPilot"
 !define PRODUCT_DIR_REGKEY "Software\Microsoft\Windows\CurrentVersion\App Paths\JsonPilotViewer.exe"

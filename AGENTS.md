@@ -16,9 +16,10 @@ Dual-process C++ desktop JSON editor using **WebUI** (civetweb HTTP/WS server) +
 - Viewer restarts backend once if ping fails after retries
 
 ## Build System
-- **CMake** with Visual Studio 17 2022 generator, x64
+- **CMake** (Ninja, via `build.bat`; VS 17 2022 generator also supported), x64
 - Multi-threaded static MSVC runtime (no vcruntime140.dll dependency)
-- `deploy/build.bat` — builds both targets, packages to `deploy/JsonPilot/`
+- `build.bat` — Ninja build; on success auto-runs `deploy/deploy.bat`
+- `deploy/deploy.bat [version]` — stages latest build outputs into `deploy/JsonPilot/` and builds the NSIS installer; reuses `deploy/version.txt` when version omitted (overwrites same-version setup); requires NSIS `makensis`
 
 ## Key Source Files
 | File | Purpose |
