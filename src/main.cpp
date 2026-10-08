@@ -531,6 +531,7 @@ private:
 
     void loadConfig() {
         configPath = getExeDir() + "\\config.json";
+        m_sessions.clear();
         std::ifstream f(configPath);
         if (f.is_open()) {
             try {
