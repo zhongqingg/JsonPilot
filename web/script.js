@@ -2300,7 +2300,9 @@ async function saveFile() {
             modified = false;
             if (!isPlainTextMode) {
                 clearDiff();
+                const expandedState = getExpandedState();
                 rerenderJson();
+                restoreExpandedState(expandedState);
             }
             document.getElementById("btnSave").disabled = true;
             document.getElementById("file-path-display").textContent = currentFilePath
@@ -2355,7 +2357,9 @@ async function doSaveAs() {
             modified = false;
             if (!isPlainTextMode) {
                 clearDiff();
+                const expandedState = getExpandedState();
                 rerenderJson();
+                restoreExpandedState(expandedState);
             }
             currentFilePath = result.path || filePath;
             document.getElementById("btnSave").disabled = true;
