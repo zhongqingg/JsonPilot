@@ -57,7 +57,11 @@ Section "MainSection" SEC01
     File "JsonPilot\JsonPilotBackend.exe"
     File "JsonPilot\JsonPilotViewer.exe"
     File "JsonPilot\WebView2Loader.dll"
+
+    ; Config: never overwrite an existing config.json (preserve user sessions/theme)
+    SetOverwrite off
     File "JsonPilot\config.json"
+    SetOverwrite on
 
     ; Web files
     SetOutPath "$INSTDIR\web"
