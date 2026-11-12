@@ -2178,6 +2178,14 @@ function handleContextMenu(action, state) {
             navigator.clipboard.writeText(valStr).catch(() => {});
             break;
         }
+        case "copy-raw-value": {
+            let rawStr;
+            if (state.val === null) rawStr = "null";
+            else if (typeof state.val === "object") rawStr = JSON.stringify(state.val);
+            else rawStr = String(state.val);
+            navigator.clipboard.writeText(rawStr).catch(() => {});
+            break;
+        }
         case "duplicate":
             if (state.path.length > 0) {
                 pushSnapshot();
